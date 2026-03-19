@@ -1,0 +1,17 @@
+                                                     0     1   2                              3          4   5                                                                      6
+0                                       Test Metrics\t   NaN NaN                            NaN        NaN NaN                                                                    NaN
+1                                  No. Of Requirements  10.0 NaN                            NaN        NaN NaN                                                                    NaN
+2       Avg. No. of Test Cases written Per Requirement   2.0 NaN                            NaN        NaN NaN                                                                    NaN
+3   Total No.of Test Cases written for all Requirement  20.0 NaN                            NaN        NaN NaN                                                                    NaN
+4                     Total No. Of test cases Executed  18.0 NaN                   Test Metrics        NaN NaN                                                                    NaN
+5                              No.of Test Cases Passed  16.0 NaN      % of Test cases Executed:  90.000000 NaN                                              % of Test cases Executed:
+6                              No.of Test Cases Failed   2.0 NaN  % of test cases NOT executed:  10.000000 NaN    No.of Test cases executed / Total No. of Test cases written ) * 100
+7                             No.of Test cases Blocked   0.0 NaN            % Test cases passed  88.888889 NaN                                        ▪ % of test cases NOT executed:
+8                        No. Of Test Cases Un Executed   2.0 NaN            % Test cases failed  12.500000 NaN  (No.of Test cases NOT executed/Total No. of Test cases written) * 100
+9                      Total No. Of Defects Identified  10.0 NaN            %Test cases blocked   0.000000 NaN                                                  ▪ % Test cases passed
+10                              Critical Defects Count   2.0 NaN                            NaN        NaN NaN             (No.of Test cases Passed /Total Test cases executed) * 100
+11                                Higher Defects Count   4.0 NaN                            NaN        NaN NaN                                                  ▪ % Test cases failed
+12                                Medium Defects Count   2.0 NaN                            NaN        NaN NaN            (No.of Test cases failed / Total Test cases executed) * 100
+13                                   Low Defects Count   2.0 NaN                            NaN        NaN NaN                                                  ▪ %Test cases blocked
+14                                    Customer Defects   0.0 NaN                            NaN        NaN NaN          (No.of test cases blocked / Total Test cases executed ) * 100
+15                          No.of defects found in UAT   0.0 NaN                            NaN        NaN NaN                                                                    NaN
