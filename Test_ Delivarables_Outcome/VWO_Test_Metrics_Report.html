@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VWO Test Metrics Report</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --success: #10b981;
+            --danger: #ef4444;
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 40px 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 40px;
+            text-align: center;
+            background: linear-gradient(to right, #60a5fa, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: fadeIn 1s ease-out;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.8s ease-out forwards;
+            opacity: 0;
+        }
+
+        .card:nth-child(1) { animation-delay: 0.1s; border-top: 4px solid var(--accent-blue); }
+        .card:nth-child(2) { animation-delay: 0.2s; border-top: 4px solid var(--accent-purple); }
+        .card:nth-child(3) { animation-delay: 0.3s; grid-column: 1 / -1; }
+
+        .card h2 {
+            margin-top: 0;
+            margin-bottom: 25px;
+            font-size: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 15px 10px;
+            text-align: left;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        th {
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.05em;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.05);
+            transition: background 0.3s ease;
+        }
+
+        .val-count {
+            text-align: right;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .badge.pass { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+        .badge.fail { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+
+        .progress-bar-container {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            height: 10px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            border-radius: 8px;
+            transition: width 1s ease-in-out;
+        }
+
+        .progress-pass { background: var(--success); width: 44.4%; }
+        .progress-fail { background: var(--danger); width: 55.6%; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .footer-note {
+            margin-top: 40px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>VWO Test Execution Dashboard</h1>
+
+    <div class="dashboard">
+        
+        <!-- Table 1 -->
+        <div class="card">
+            <h2>Test Metrics Overview</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th class="val-count">Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Number of Requirements</td>
+                        <td class="val-count">10</td>
+                    </tr>
+                    <tr>
+                        <td>Average No. of Test Cases Written (Per Req)</td>
+                        <td class="val-count">2.7</td>
+                    </tr>
+                    <tr>
+                        <td>Total No. of Test Cases Written</td>
+                        <td class="val-count">27</td>
+                    </tr>
+                    <tr>
+                        <td>Total No. of Test Cases Executed</td>
+                        <td class="val-count">27</td>
+                    </tr>
+                    <tr>
+                        <td>Number of Test Cases Passed</td>
+                        <td class="val-count"><span class="badge pass">12</span></td>
+                    </tr>
+                    <tr>
+                        <td>Number of Test Cases Failed</td>
+                        <td class="val-count"><span class="badge fail">15</span></td>
+                    </tr>
+                    <tr>
+                        <td>Number of Test Cases Blocked</td>
+                        <td class="val-count">0</td>
+                    </tr>
+                    <tr>
+                        <td>Number of Test Cases Unexecuted</td>
+                        <td class="val-count">2</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Table 2 -->
+        <div class="card">
+            <h2>Execution Percentages</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th class="val-count">Percentage (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Test Cases Executed</td>
+                        <td class="val-count">100%</td>
+                    </tr>
+                    <tr>
+                        <td>Test Cases Not Executed</td>
+                        <td class="val-count">0%</td>
+                    </tr>
+                    <tr>
+                        <td>
+                            Test Cases Passed
+                            <div class="progress-bar-container"><div class="progress-bar progress-pass"></div></div>
+                        </td>
+                        <td class="val-count"><span class="badge pass">44.4%</span></td>
+                    </tr>
+                    <tr>
+                        <td>
+                            Test Cases Failed
+                            <div class="progress-bar-container"><div class="progress-bar progress-fail"></div></div>
+                        </td>
+                        <td class="val-count"><span class="badge fail">55.6%</span></td>
+                    </tr>
+                    <tr>
+                        <td>Test Cases Blocked</td>
+                        <td class="val-count">0%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Categories Breakdown -->
+        <div class="card">
+            <h2>Test Cases by Category Breakdown</h2>
+            <table style="max-width: 600px; margin: auto;">
+                <thead>
+                    <tr>
+                        <th>Category Area</th>
+                        <th class="val-count">Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>Functional</td><td class="val-count">9</td></tr>
+                    <tr><td>Security</td><td class="val-count">2</td></tr>
+                    <tr><td>Accessibility</td><td class="val-count">1</td></tr>
+                    <tr><td>Integration</td><td class="val-count">1</td></tr>
+                    <tr><td>Negative</td><td class="val-count">1</td></tr>
+                    <tr><td>Performance</td><td class="val-count">1</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <div class="footer-note">
+        Automatically Generated by VWO Test Reporting Engine &bull; Project: app.vwo.com
+    </div>
+
+</body>
+</html>

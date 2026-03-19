@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.vscode/
+.idea/
+.gemini/
+.agent/
+.agents/
+*.log
+~$*.docx
+~$*.xlsx
+# One-off scripts we moved
+Input/metrics_output.txt
+Input/read_metrics.py
