@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --jp-accent:       #22d3ee;
+  --jp-accent-hover: #06b6d4;
+  --jp-radius-card:  12px;
+  --jp-shadow-card:  0 1px 3px rgba(0,0,0,0.4);
+  --jp-shadow-hover: 0 8px 24px rgba(0,0,0,0.5);
+  --jp-transition:   all 200ms ease;
+}
+
+/* Dark mode background layers */
+.dark body          { background-color: #0a0a0f; color: #f1f5f9; }
+.dark .jp-sidebar   { background-color: #0f0f17; }
+.dark .jp-column    { background-color: #12121a; }
+.dark .jp-card      { background-color: #1a1a26; }
+.dark .jp-card:hover{ background-color: #1e1e2e; }
+
+/* JP Logo gradient animation */
+@keyframes jp-gradient {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.jp-logo-gradient {
+  background: linear-gradient(90deg, #22d3ee, #818cf8, #22d3ee);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: jp-gradient 3s ease infinite;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
