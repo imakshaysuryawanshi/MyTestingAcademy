@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "index.js",
+      "use": "@vercel/node",
+      "config": {
+        "maxDuration": 60
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "index.js"
+    }
+  ],
+  "env": {
+    "LLM_PROVIDER": "groq",
+    "VERCEL": "1",
+    "DEFAULT_MODEL": "llama-3.3-70b-versatile",
+    "DEFAULT_TEMPERATURE": "0.3",
+    "DEFAULT_MAX_TOKENS": "700"
+  }
+}
