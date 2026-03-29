@@ -23,10 +23,11 @@ class ScraperService {
    * Step 1: Web Scraping — Dynamic Content Support
    */
   async scrape(url) {
-    const browser = await this._init();
-    const page = await browser.newPage();
-    
+    let browser, page;
     try {
+      browser = await this._init();
+      page = await browser.newPage();
+      
       console.log(`[Scraper] Navigating to: ${url}`);
       // Use 'domcontentloaded' instead of 'networkidle0' for much faster and more reliable loading
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -43,7 +44,7 @@ class ScraperService {
       console.warn(`[Scraper] Puppeteer failed for ${url}: ${err.message}. Returning minimal trace.`);
       return { url, title: "Unknown Page", elements: [], visible_text: "Navigation failed" };
     } finally {
-      await page.close();
+      if (page) await page.close();
     }
   }
 

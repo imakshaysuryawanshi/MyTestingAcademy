@@ -1,0 +1,37 @@
+"Scenario TID","TestCase Description","PreCondition","TestSteps","Expected Result","Actual Result","Steps to Execute","Expected Result","Actual Result","Status","Executed QA Name ","Misc (Comments)","Priority","Is Automated"
+"TC_AUTH_01","Generate token with valid credentials","API is operational","POST /auth with valid username and password","Token generated successfully",,"1. Open Postman
+2. Create POST request [https://restful-booker.herokuapp.com/auth](https://restful-booker.herokuapp.com/auth)
+3. Add header Content-Type: application/json
+4. Add JSON body {""username"":""admin"",""password"":""password123""}
+5. Send request","Status code 200, token returned, response header application/json, response time <2000ms",,"Unexecuted",,"Positive authentication","High","Yes"
+"TC_AUTH_02","Generate token with invalid password","API is operational","POST /auth with incorrect password","Authentication failure",,"1. POST [https://restful-booker.herokuapp.com/auth](https://restful-booker.herokuapp.com/auth)
+2. Add JSON body {""username"":""admin"",""password"":""wrong""}
+3. Send request","Status code 200 with failure message or invalid credentials response, response time <2000ms",,"Unexecuted",,"Negative authentication","High","Yes"
+"TC_AUTH_03","Generate token missing password","API is operational","POST /auth missing password field","Validation error expected",,"1. POST [https://restful-booker.herokuapp.com/auth](https://restful-booker.herokuapp.com/auth)
+2. Body {""username"":""admin""}
+3. Send request","Error message returned or invalid login response, response time <2000ms",,"Unexecuted",,"Edge validation","Medium","No"
+"TC_AUTH_04","Generate token missing username","API is operational","POST /auth missing username","Validation error expected",,"1. POST [https://restful-booker.herokuapp.com/auth](https://restful-booker.herokuapp.com/auth)
+2. Body {""password"":""password123""}
+3. Send request","Authentication failure response, response time <2000ms",,"Unexecuted",,"Edge validation","Medium","No"
+"TC_BOOKING_CREATE_01","Create booking with valid payload","API operational","POST /booking valid booking JSON","Booking created successfully",,"1. POST [https://restful-booker.herokuapp.com/booking](https://restful-booker.herokuapp.com/booking)
+2. Add JSON body with firstname, lastname, totalprice, depositpaid, bookingdates, additionalneeds
+3. Send request","Status 200, bookingid returned, response header application/json, response time <2000ms",,"Unexecuted",,"Positive booking creation","High","Yes"
+"TC_BOOKING_CREATE_02","Create booking with missing firstname","API operational","POST /booking missing firstname field","Validation failure expected",,"1. POST [https://restful-booker.herokuapp.com/booking](https://restful-booker.herokuapp.com/booking)
+2. Body missing firstname
+3. Send request","Error or invalid booking response returned, response time <2000ms",,"Unexecuted",,"Negative booking creation","High","No"
+"TC_BOOKING_GET_01","Retrieve booking with valid id","Existing booking id available","GET /booking/{id}","Booking details returned",,"1. GET [https://restful-booker.herokuapp.com/booking/{id}](https://restful-booker.herokuapp.com/booking/{id})
+2. Replace id with valid booking id
+3. Send request","Status 200, booking JSON returned, response time <2000ms",,"Unexecuted",,"Positive retrieval","High","Yes"
+"TC_BOOKING_GET_02","Retrieve booking with invalid id","API operational","GET /booking/999999","Not found response",,"1. GET [https://restful-booker.herokuapp.com/booking/999999](https://restful-booker.herokuapp.com/booking/999999)
+2. Send request","Status 404 or empty response body, response time <2000ms",,"Unexecuted",,"Invalid booking id","Medium","No"
+"TC_BOOKING_UPDATE_01","Update booking with valid token","Valid token and booking id available","PUT /booking/{id} with updated JSON","Booking updated successfully",,"1. Generate token using /auth
+2. PUT [https://restful-booker.herokuapp.com/booking/{id}](https://restful-booker.herokuapp.com/booking/{id})
+3. Add Cookie token header
+4. Send updated JSON payload","Status 200 updated booking returned, response time <2000ms",,"Unexecuted",,"Full update","High","Yes"
+"TC_BOOKING_DELETE_01","Delete booking with valid token","Valid token and booking id available","DELETE /booking/{id}","Booking deleted successfully",,"1. Generate token using /auth
+2. DELETE [https://restful-booker.herokuapp.com/booking/{id}](https://restful-booker.herokuapp.com/booking/{id})
+3. Add token in cookie header
+4. Send request","Status 201 success response, response time <2000ms",,"Unexecuted",,"Positive delete","High","Yes"
+"TC_PING_01","Validate API health endpoint","API deployed and reachable","GET /ping","API health confirmed",,"1. Open Postman
+2. GET [https://restful-booker.herokuapp.com/ping](https://restful-booker.herokuapp.com/ping)
+3. Send request","Status 200 or 201 response, response time <2000ms",,"Unexecuted",,"Health check","Low","Yes"

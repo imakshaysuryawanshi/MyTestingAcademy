@@ -1,0 +1,58 @@
+"Scenario TID","TestCase Description","PreCondition","TestSteps","Expected Result","Actual Result","Steps to Execute","Expected Result","Actual Result","Status","Executed QA Name ","Misc (Comments)","Priority","Is Automated"
+"TC_PING_01","Health Check - Service Availability","API Endpoint exists","Send GET request to /ping","Response 201 Created and 'Created' string",,"1. Open Postman
+2. Set Method to GET
+3. URL: https://restful-booker.herokuapp.com/ping
+4. Click Send","Status Code: 201 Created
+Response Body: Created
+Response Time: < 500ms",,"Unexecuted","QA Tester",,"Critical","Yes"
+"TC_AUTH_01","Authenticate - Valid Admin Credentials","API is operational","Send POST request to /auth with valid credentials","Status 200 and auth token generated",,"1. URL: https://restful-booker.herokuapp.com/auth
+2. Body: {""username"":""admin"",""password"":""password123""}
+3. Headers: Content-Type: application/json
+4. Send","Status Code: 200 OK
+Response Body contains 'token'
+Response Time: < 700ms",,"Unexecuted","QA Tester",,"High","Yes"
+"TC_AUTH_02","Authenticate - Invalid Credentials","API is operational","Send POST to /auth with incorrect password","Status 200 with 'Bad credentials' reason",,"1. URL: /auth
+2. Body: {""username"":""admin"",""password"":""wrongpass""}
+3. Send","Status Code: 200 OK
+Response Body: {""reason"":""Bad credentials""}",,"Unexecuted","QA Tester",,"Medium","Yes"
+"TC_BOOK_01","Create Booking - Positive Scenario","Valid payload prepared","POST to /booking with full valid JSON","Booking created with unique ID",,"1. URL: /booking
+2. Body: {""firstname"":""Jim"",""lastname"":""Brown"",""totalprice"":111,""depositpaid"":true,""bookingdates"":{""checkin"":""2018-01-01"",""checkout"":""2019-01-01""},""additionalneeds"":""Breakfast""}
+3. Headers: Content-Type: application/json, Accept: application/json
+4. Send","Status Code: 200 OK
+Response Body: Contains bookingid and nested booking object
+Header: Content-Type: application/json",,"Unexecuted","QA Tester",,"High","Yes"
+"TC_BOOK_02","Get All Booking IDs","Data exists in DB","GET request to /booking","Returns array of objects with bookingid",,"1. URL: /booking
+2. Send","Status Code: 200 OK
+Response Body: Array of objects [{bookingid: N}, ...]",,"Unexecuted","QA Tester",,"High","Yes"
+"TC_BOOK_03","Get Booking By ID - Valid","Booking ID exists","GET request to /booking/:id","Returns specific booking details",,"1. Perform GET /booking to get an ID
+2. URL: /booking/{{id}}
+3. Headers: Accept: application/json
+4. Send","Status Code: 200 OK
+Body matching schema: firstname, lastname, etc.",,"Unexecuted","QA Tester",,"High","Yes"
+"TC_BOOK_04","Get Booking - Invalid ID Format","API is operational","GET request with non-numeric ID /booking/abc","Status 404 Not Found",,"1. URL: /booking/abc
+2. Send","Status Code: 404 Not Found",,"Unexecuted","QA Tester",,"Medium","Yes"
+"TC_BOOK_05","Update Booking - Full (PUT)","Valid Token and ID exist","PUT request with full updated payload","Booking details are fully updated",,"1. Header: Cookie: token={{token}}
+2. URL: /booking/{{id}}
+3. Body: Full JSON with new values
+4. Send","Status Code: 200 OK
+Response Body shows updated values",,"Unexecuted","QA Tester",,"Medium","Yes"
+"TC_BOOK_06","Update Booking - Partial (PATCH)","Valid Token and ID exist","PATCH request with partial JSON (firstname)","Only specific field is updated",,"1. Header: Cookie: token={{token}}
+2. URL: /booking/{{id}}
+3. Body: {""firstname"":""James""}
+4. Send","Status Code: 200 OK
+Body shows updated firstname, others remain same",,"Unexecuted","QA Tester",,"Medium","Yes"
+"TC_BOOK_07","Update Booking - Unauthorized (No Token)","Booking ID exists","PUT request without Cookie/Auth header","Status 403 Forbidden",,"1. URL: /booking/{{id}}
+2. Body: {JSON}
+3. Send without Token","Status Code: 403 Forbidden
+Response Body: Forbidden",,"Unexecuted","QA Tester",,"High","Yes"
+"TC_BOOK_08","Delete Booking - Successful","Valid Token and ID exist","DELETE request to /booking/:id","Booking is removed successfully",,"1. Header: Cookie: token={{token}}
+2. Method: DELETE
+3. URL: /booking/{{id}}
+4. Send","Status Code: 201 Created
+Response Body: Created",,"Unexecuted","QA Tester",,"High","Yes"
+"TC_BOOK_09","Delete Booking - Unauthorized","Booking ID exists","DELETE request without Token","Status 403 Forbidden",,"1. Method: DELETE
+2. URL: /booking/{{id}}
+3. Send without Token","Status Code: 403 Forbidden",,"Unexecuted","QA Tester",,"High","Yes"
+"TC_BOOK_10","Create Booking - Missing Field (Negative)","Incomplete payload","POST to /booking without 'lastname'","Internal Server Error or Bad Request",,"1. URL: /booking
+2. Body: {""firstname"":""Jim""}
+3. Send","Status Code: 500 Internal Server Error (Default API response for bad payload schema)",,"Unexecuted","QA Tester",,"Low","Yes"
