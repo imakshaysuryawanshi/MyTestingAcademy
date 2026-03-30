@@ -3,6 +3,7 @@ import {
   Wifi, Loader2, Sparkles, CheckCircle2, XCircle, AlertTriangle,
   ChevronDown, ChevronUp, ArrowRight, FlaskConical, Tag, Download, Trash2
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../store/AppContext";
 import { api } from "../services/api";
 
@@ -20,7 +21,7 @@ const priorityColors = {
   Low:    "text-green-400 bg-green-400/10 border-green-400/30",
 };
 
-function ScenarioCard({ scenario, onDelete }) {
+function ScenarioCard({ scenario, onDelete, onGenerateTestCases, isGenerating }) {
   const [expanded, setExpanded] = useState(false);
   const typeColor    = typeColors[scenario.type]    || typeColors.edge;
   const priorityColor = priorityColors[scenario.priority] || priorityColors.Medium;
@@ -57,31 +58,46 @@ function ScenarioCard({ scenario, onDelete }) {
       </div>
 
       {expanded && (
-        <div className="px-6 pb-5 space-y-3 border-t border-border/40 pt-4">
-          {scenario.description && (
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-textMuted font-semibold mb-1">Description</p>
-              <p className="text-sm text-gray-300 leading-relaxed">{scenario.description}</p>
-            </div>
-          )}
-          {scenario.endpoint_hint && (
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-textMuted font-semibold mb-1">Endpoint Hint</p>
-              <code className="text-xs text-cyan-400 font-mono bg-cyan-400/5 px-2 py-1 rounded border border-cyan-400/20">
-                {scenario.endpoint_hint}
-              </code>
-            </div>
-          )}
-          {scenario.tags?.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <Tag size={12} className="text-textMuted" />
-              {scenario.tags.map((tag, i) => (
-                <span key={i} className="text-[10px] bg-white/5 border border-border px-2 py-0.5 rounded-full text-textMuted">
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
+        <div className="px-6 pb-5 space-y-4 border-t border-border/40 pt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {scenario.description && (
+              <div className="md:col-span-2">
+                <p className="text-[10px] uppercase tracking-widest text-textMuted font-semibold mb-1">Description</p>
+                <p className="text-sm text-gray-300 leading-relaxed">{scenario.description}</p>
+              </div>
+            )}
+            {scenario.endpoint_hint && (
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-textMuted font-semibold mb-1">Endpoint Hint</p>
+                <code className="text-xs text-cyan-400 font-mono bg-cyan-400/5 px-2 py-1 rounded border border-cyan-400/20">
+                  {scenario.endpoint_hint}
+                </code>
+              </div>
+            )}
+            {scenario.tags?.length > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-textMuted font-semibold mb-1">Tags</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {scenario.tags.map((tag, i) => (
+                    <span key={i} className="text-[10px] bg-white/5 border border-border px-2 py-0.5 rounded-full text-textMuted">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-4 border-t border-border/20 flex justify-end">
+             <button
+                onClick={() => onGenerateTestCases(scenario)}
+                disabled={isGenerating}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-accent/80 hover:bg-accent text-white transition disabled:opacity-50"
+             >
+                {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <FlaskConical size={12} />}
+                {isGenerating ? "Generating..." : "Generate Test Cases"}
+             </button>
+          </div>
         </div>
       )}
     </div>
@@ -89,9 +105,11 @@ function ScenarioCard({ scenario, onDelete }) {
 }
 
 export default function APIScenarios() {
-  const { stories, apiScenarios, setApiScenarios, showToast } = useAppStore();
+  const navigate = useNavigate();
+  const { stories, apiScenarios, setApiScenarios, setApiTestCases, showToast } = useAppStore();
   const [activeStory, setActiveStory] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [genId, setGenId]   = useState(null); // scenario being processed for test cases
   const [result, setResult]   = useState(null); // last generation result
 
   const handleGenerate = async (story) => {
@@ -114,8 +132,13 @@ export default function APIScenarios() {
         return;
       }
 
-      // Tag each scenario with its source story
-      const tagged = scenarios.map(s => ({ ...s, _sourceStory: story.title, _generatedAt: new Date().toISOString() }));
+      // Tag each scenario with its source story and unique ID if missing
+      const tagged = scenarios.map(s => ({ 
+        ...s, 
+        id: s.id || `ATS-${Math.floor(Math.random() * 9000) + 1000}`,
+        _sourceStory: story.title, 
+        _generatedAt: new Date().toISOString() 
+      }));
       setApiScenarios(prev => [...tagged, ...prev]);
       setResult({ scenarios: tagged, reason: data.reason });
       showToast(`✓ ${tagged.length} API scenarios generated!`, "success");
@@ -124,6 +147,81 @@ export default function APIScenarios() {
     } finally {
       setLoading(false);
       setActiveStory(null);
+    }
+  };
+
+  const handleGenerateTestCases = async (scenario) => {
+    setGenId(scenario.id);
+    try {
+      const res = await api.generateApiTestCases(scenario);
+      
+      // Resilient key checking (Models sometimes fluctuate keys like api_test_cases, test_cases, or direct arrays)
+      let testCases = [];
+      if (Array.isArray(res.data)) {
+        testCases = res.data;
+      } else if (res.data?.api_test_cases) {
+        testCases = res.data.api_test_cases;
+      } else if (res.data?.test_cases) {
+         testCases = res.data.test_cases;
+      } else {
+        // Find the first array property in the object
+        const firstArrKey = Object.keys(res.data || {}).find(k => Array.isArray(res.data[k]));
+        if (firstArrKey) testCases = res.data[firstArrKey];
+      }
+      
+      if (!testCases || testCases.length === 0) {
+        showToast("No test cases generated. The AI might need more scenario details.", "error");
+        return;
+      }
+
+      // Normalize fields — handle empty strings AND hallucination label artifacts
+      const stripLabel = (v) => typeof v === 'string'
+        ? v.replace(/Inference\s*\(low confidence\)\s*[-\u2013]?\s*/gi, '').trim()
+        : v;
+
+      const enriched = testCases.map((tc, idx) => {
+        const title = stripLabel(tc.title || tc.title_test || tc.name || tc.case_title || '') || `API Test ${idx + 1}`;
+        const type = (tc.type || tc.test_type || tc.category || 'positive').toLowerCase();
+        const priority = tc.priority || tc.importance || 'Medium';
+        const rawEndpoint = tc.request?.endpoint || tc.endpoint || scenario.endpoint_hint || '/api/unknown';
+        const request = {
+          ...(tc.request || {}),
+          method: tc.request?.method || scenario.method || 'GET',
+          endpoint: stripLabel(rawEndpoint),
+          headers: tc.request?.headers || { 'Content-Type': 'application/json' },
+          body: tc.request?.body || {}
+        };
+
+        return {
+          ...tc,
+          title,
+          type,
+          priority,
+          request,
+          _sourceScenario: scenario.title,
+          _sourceEndpoint: scenario.endpoint_hint,
+          _generatedAt: new Date().toISOString()
+        };
+      });
+
+      setApiTestCases(prev => {
+         // Use a more global ID since this list can grow
+         const startIdx = prev.length;
+         const finalEnriched = enriched.map((e, i) => ({
+           ...e,
+           id: `ATC-${String(startIdx + i + 1).padStart(3, '0')}`
+         }));
+         return [...prev, ...finalEnriched];
+      });
+      
+      showToast(`✓ ${enriched.length} API Test Cases created!`, "success");
+      
+      // Navigate to API Test Cases page
+      setTimeout(() => navigate("/api-testcases"), 800);
+    } catch (err) {
+      showToast(`Test Case generation failed: ${err.message}`, "error");
+    } finally {
+      setGenId(null);
     }
   };
 
@@ -247,6 +345,8 @@ export default function APIScenarios() {
                 key={idx}
                 scenario={scenario}
                 onDelete={() => handleDelete(idx)}
+                onGenerateTestCases={handleGenerateTestCases}
+                isGenerating={genId === scenario.id}
               />
             ))}
           </div>
@@ -258,7 +358,7 @@ export default function APIScenarios() {
           <Wifi size={44} className="text-textMuted" />
           <p className="text-textMuted text-sm">No API scenarios yet. Select a story above to start.</p>
         </div>
-      )}
+      ) }
     </div>
   );
 }

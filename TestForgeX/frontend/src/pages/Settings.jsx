@@ -10,7 +10,7 @@ import { api } from "../services/api";
 // ── Provider model catalogue ──────────────────────────────────────────────────
 const PROVIDER_MODELS = {
   ollama: [
-    "llama3:8b-instruct-q4_0",
+    "llama3:latest",
     "deepseek-coder:6.7b-instruct-q4_0",
     "mistral:7b-instruct",
     "gemma:7b",
@@ -102,16 +102,17 @@ export default function Settings() {
   const handleTestConnection = async () => {
     setConnStatus("testing");
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/providers`);
-      const json = await res.json();
       const provider = localConfig.model.provider;
+      const ollamaUrl = localConfig.model.ollamaUrl || "http://localhost:11434";
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/providers?ollamaUrl=${encodeURIComponent(ollamaUrl)}`);
+      const json = await res.json();
       const match = json.providers?.find(p => p.name === provider);
       if (match?.available) {
         setConnStatus("ok");
         showToast(`✓ Connected to ${PROVIDER_META[provider]?.label}`, "success");
       } else {
         setConnStatus("fail");
-        showToast(`${PROVIDER_META[provider]?.label} is not available. Check your .env key.`, "error");
+        showToast(`${PROVIDER_META[provider]?.label} is not available. ${PROVIDER_META[provider]?.needsKey ? 'Check your .env key.' : 'Make sure the service is running locally on ' + ollamaUrl}`, "error");
       }
     } catch {
       setConnStatus("fail");
@@ -193,6 +194,22 @@ export default function Settings() {
                   {modelsList.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
+
+              {currentProvider === "ollama" && (
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-300 mb-1 flex items-center justify-between">
+                    Ollama Endpoint URL
+                    <span className="text-[10px] text-accent/70 uppercase">Localhost:11434</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="input font-mono text-sm bg-sidebar/50 focus:border-accent/60"
+                    placeholder="e.g. http://localhost:11434"
+                    value={localConfig.model.ollamaUrl || ""}
+                    onChange={e => handleNestedChange("model", "ollamaUrl", e.target.value)}
+                  />
+                </div>
+              )}
 
               {providerMeta.needsKey && (
                 <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3 text-xs text-yellow-300">

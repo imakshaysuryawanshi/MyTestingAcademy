@@ -13,12 +13,16 @@ export default function Scenarios() {
 
   // Sync incoming scenarios from localStorage on first load (written by UserStories page)
   React.useEffect(() => {
-    const saved = localStorage.getItem("tfx_scenarios");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.length > 0 && scenarios.length === 0) {
-        setScenarios(parsed);
+    try {
+      const saved = localStorage.getItem("tfx_scenarios");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0 && scenarios.length === 0) {
+          setScenarios(parsed);
+        }
       }
+    } catch (err) {
+      console.error("Failed to parse scenarios from storage", err);
     }
   }, []);
 
@@ -54,10 +58,11 @@ export default function Scenarios() {
   };
 
   const handleExportCSV = () => {
-    if (scenarios.length === 0) return;
+    const safeScenarios = Array.isArray(scenarios) ? scenarios : [];
+    if (safeScenarios.length === 0) return;
     const headers = ["Title", "Description", "Type", "Priority"];
     const csvRows = [headers.join(",")];
-    scenarios.forEach(s => {
+    safeScenarios.forEach(s => {
       const cols = [
         `"${(s.title || "").replace(/"/g, '""')}"`,
         `"${(s.description || "").replace(/"/g, '""')}"`,
@@ -76,7 +81,9 @@ export default function Scenarios() {
     showToast("✓ CSV Export successful", "success");
   };
 
-  if (scenarios.length === 0) {
+  const safeScenarios = Array.isArray(scenarios) ? scenarios : [];
+
+  if (safeScenarios.length === 0) {
     return (
       <div className="max-w-4xl mx-auto mt-16 flex flex-col items-center justify-center text-center gap-6 pb-12">
         <div className="p-6 bg-card rounded-2xl border border-border">
@@ -99,7 +106,7 @@ export default function Scenarios() {
         </div>
         <div>
           <h1 className="text-3xl font-bold text-white">Test Scenarios</h1>
-          <p className="text-sm text-textMuted mt-1">{scenarios.length} scenario{scenarios.length > 1 ? "s" : ""} generated • Click any card to expand</p>
+          <p className="text-sm text-textMuted mt-1">{safeScenarios.length} scenario{safeScenarios.length !== 1 ? "s" : ""} generated • Click any card to expand</p>
         </div>
         <div className="ml-auto">
           <button
@@ -112,7 +119,7 @@ export default function Scenarios() {
       </div>
 
       <div className="space-y-4">
-        {scenarios.map((scenario, idx) => (
+        {safeScenarios.map((scenario, idx) => (
           <div
             key={idx}
             className="bg-card border border-border rounded-2xl overflow-hidden hover:border-accent/40 transition-all duration-200 group"

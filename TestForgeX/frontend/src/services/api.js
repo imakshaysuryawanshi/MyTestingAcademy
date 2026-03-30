@@ -13,6 +13,16 @@ const safeParse = (data) => {
   return data;
 };
 
+// Phase 24 Helper: Get current settings from localStorage to pass to backend
+const getInferenceConfig = () => {
+    try {
+        const saved = localStorage.getItem('tfx_settings');
+        if (!saved) return null;
+        const parsed = JSON.parse(saved);
+        return parsed.model; // contains provider, ollamaUrl, id, etc.
+    } catch { return null; }
+};
+
 // Wrapper for simulated network requests with retries
 const fetchWithRetry = async (mockFn, retries = 2) => {
   for (let i = 0; i < retries; i++) {
@@ -65,7 +75,7 @@ export const api = {
         const response = await fetch(`${API_BASE_URL}/api/testcases/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ story }),
+          body: JSON.stringify({ story, settings: getInferenceConfig() }),
           signal: controller.signal
         });
         clearTimeout(timeoutId);
@@ -233,7 +243,7 @@ ${buildActions()}
       const response = await fetch(`${API_BASE_URL}/api/url/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
+        body: JSON.stringify({ url, settings: getInferenceConfig() })
       });
       const json = await response.json();
       if (json.success) return { success: true, data: json.data };
@@ -252,7 +262,8 @@ ${buildActions()}
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             title: payload.title || payload.context || payload,
-            criteria: payload.criteria || "" 
+            criteria: payload.criteria || "",
+            settings: getInferenceConfig()
           }),
           signal: controller.signal
         });
@@ -273,7 +284,7 @@ ${buildActions()}
       const response = await fetch(`${API_BASE_URL}/api/userstory/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: sourceData })
+        body: JSON.stringify({ input: sourceData, settings: getInferenceConfig() })
       });
       const json = await response.json();
       if (json.success) return { success: true, data: json.data };
@@ -287,7 +298,7 @@ ${buildActions()}
       const response = await fetch(`${API_BASE_URL}/api/coverage/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ testCases })
+        body: JSON.stringify({ testCases, settings: getInferenceConfig() })
       });
       const json = await response.json();
       if (json.success) return { success: true, data: json.data };
@@ -315,11 +326,39 @@ ${buildActions()}
       const response = await fetch(`${API_BASE_URL}/api/scenarios/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ story })
+        body: JSON.stringify({ story, settings: getInferenceConfig() })
       });
       const json = await response.json();
       if (json.success && json.data) {
-        return { success: true, data: json.data.test_scenarios || json.data };
+        // Advanced recursive search for any array of objects with 'title' or 'description'
+        const findScenarios = (obj) => {
+          if (!obj || typeof obj !== 'object') return null;
+          if (Array.isArray(obj)) return obj;
+          
+          // Check common keys directly first
+          const commonKeys = ['test_scenarios', 'Generated Output', 'generated_output', 'scenarios', 'cases'];
+          for (const k of commonKeys) {
+            if (obj[k] && Array.isArray(obj[k])) return obj[k];
+            // One level deeper for Generated Output: { "Generated Output": { "test_scenarios": [] } }
+            if (obj[k] && typeof obj[k] === 'object') {
+               const deep = findScenarios(obj[k]);
+               if (deep && Array.isArray(deep)) return deep;
+            }
+          }
+
+          // Fallback: search ALL keys for an array
+          for (const k of Object.keys(obj)) {
+            if (Array.isArray(obj[k]) && obj[k].length > 0) return obj[k];
+            if (typeof obj[k] === 'object') {
+              const deep = findScenarios(obj[k]);
+              if (deep && Array.isArray(deep)) return deep;
+            }
+          }
+          return null;
+        };
+
+        const list = findScenarios(json.data) || [];
+        return { success: true, data: list };
       }
       throw new Error(json.error || 'Failed to generate scenarios');
     });
@@ -334,7 +373,7 @@ ${buildActions()}
         const response = await fetch(`${API_BASE_URL}/api/api-scenarios/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ story }),
+          body: JSON.stringify({ story, settings: getInferenceConfig() }),
           signal: controller.signal
         });
         clearTimeout(timeoutId);
@@ -357,7 +396,7 @@ ${buildActions()}
         const response = await fetch(`${API_BASE_URL}/api/api-testcases/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiData }),
+          body: JSON.stringify({ apiData, settings: getInferenceConfig() }),
           signal: controller.signal
         });
         clearTimeout(timeoutId);
@@ -368,32 +407,6 @@ ${buildActions()}
           return { success: true, data: parsed };
         }
         throw new Error(json.error || 'Failed to generate API test cases');
-      } catch (err) {
-        clearTimeout(timeoutId);
-        throw err;
-      }
-    });
-  },
-
-  // API Test Scenarios — also fix possible string wrapping
-  generateApiScenarios: async (story) => {
-    return fetchWithRetry(async () => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000);
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/api-scenarios/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ story }),
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        const json = await response.json();
-        if (json.success && json.data) {
-          const parsed = safeParse(json.data);
-          return { success: true, data: parsed };
-        }
-        throw new Error(json.error || 'Failed to generate API test scenarios');
       } catch (err) {
         clearTimeout(timeoutId);
         throw err;

@@ -52,8 +52,8 @@ class ScraperService {
       page = await browser.newPage();
       
       console.log(`[Scraper] Navigating to: ${url}`);
-      // Use 'domcontentloaded' instead of 'networkidle0' for much faster and more reliable loading
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      const status = response ? response.status() : 0;
       
       // Wait a small extra bit for static content
       await new Promise(r => setTimeout(r, 1000));
@@ -62,10 +62,10 @@ class ScraperService {
       const html = await page.content();
       const data = this.extractDetails(html);
       
-      return { url, title, ...data };
+      return { url, title, status, ...data };
     } catch (err) {
       console.warn(`[Scraper] Puppeteer failed for ${url}: ${err.message}. Returning minimal trace.`);
-      return { url, title: "Unknown Page", elements: [], visible_text: "Navigation failed" };
+      return { url, title: "Blocked / Unavailable", status: 503, elements: [], visible_text: "Navigation failed" };
     } finally {
       if (page) await page.close();
     }

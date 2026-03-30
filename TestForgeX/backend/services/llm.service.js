@@ -42,7 +42,20 @@ class LLMService {
   }
 
   async run(promptAlias, variables = {}, overrideOptions = {}) {
-    const provider = await this._resolveProvider();
+    let provider = null;
+    
+    // Phase 24: Runtime Provider Override
+    if (overrideOptions.provider && PROVIDERS[overrideOptions.provider]) {
+        provider = PROVIDERS[overrideOptions.provider];
+        if (!(await provider.isAvailable(overrideOptions.ollamaUrl))) {
+            if (overrideOptions.provider === 'groq') throw new Error("Groq API key is missing. Please add GROQ_API_KEY to your backend .env file.");
+            if (overrideOptions.provider === 'grok') throw new Error("Grok / xAI API key is missing. Please add XAI_API_KEY to your backend .env file.");
+            throw new Error(`Requested AI provider '${overrideOptions.provider}' is unreachable on ${overrideOptions.ollamaUrl || 'default port'}. Please verify it is running.`);
+        }
+    } else {
+        provider = await this._resolveProvider();
+    }
+
     const preparedVars = this._prepareVars(variables);
 
     let compiledPrompt;
@@ -61,17 +74,21 @@ class LLMService {
       }
     }
 
-    try {
-      const antiHalucRules = fs.readFileSync(path.resolve(process.cwd(), 'prompts/anti_hallucination_rules.md'), 'utf-8');
-      compiledPrompt += `\n\n${antiHalucRules}`;
-    } catch (e) {}
+    if (!promptAlias.includes('DOM Intelligence Layer')) {
+      try {
+        const antiHalucRules = fs.readFileSync(path.resolve(process.cwd(), 'prompts/anti_hallucination_rules.md'), 'utf-8');
+        compiledPrompt += `\n\n${antiHalucRules}`;
+      } catch (e) {}
+    }
 
-    const model = overrideOptions.model || process.env.DEFAULT_MODEL || 'llama3-8b-8192';
+    const model = overrideOptions.id || process.env.DEFAULT_MODEL || 'llama3-8b-8192';
     const temperature = overrideOptions.temperature ?? parseFloat(process.env.DEFAULT_TEMPERATURE || '0.3');
     const maxTokens   = overrideOptions.maxTokens   ?? parseInt(process.env.DEFAULT_MAX_TOKENS    || '700');
+    // For Ollama custom local host
+    const url         = overrideOptions.ollamaUrl   || undefined;
 
-    console.log(`[LLMService] Generating: ${promptAlias}`);
-    const raw = await provider.generate(compiledPrompt, model, { temperature, maxTokens });
+    console.log(`[LLMService] Generating via ${provider.name} | Model: ${model} | URL: ${url} | Prompt: ${promptAlias}`);
+    const raw = await provider.generate(compiledPrompt, model, { temperature, maxTokens, url });
     const parsed = this._tryParseJSON(raw);
 
     // AI Anti-Hallucination Guardrail (Phase: Implementation)
@@ -89,19 +106,34 @@ class LLMService {
 
   _tryParseJSON(text) {
     if (!text || typeof text !== 'string') return text;
+
+    // 1. Direct parse
+    try { return JSON.parse(text); } catch {}
+
+    // 2. Extract from ```json ... ``` fences
     try {
-      return JSON.parse(text);
-    } catch {
-      try {
-        const jsonMatch = text.match(/```json\s*([\s\S]*?)```/i) || 
-                          text.match(/```\s*([\s\S]*?)```/i) ||
-                          text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-        if (jsonMatch) {
-          const content = jsonMatch[1] || jsonMatch[0];
-          return JSON.parse(content.trim());
-        }
-      } catch (e) {}
-    }
+      const fenced = text.match(/```json\s*([\s\S]*?)```/i) ||
+                     text.match(/```\s*([\s\S]*?)```/i);
+      if (fenced) return JSON.parse((fenced[1] || fenced[0]).trim());
+    } catch {}
+
+    // 3. Extract from anti-hallucination wrapper sections
+    // LLM wraps JSON in: ## Generated Output:\n\n{...}\n\n## Self-Validation
+    try {
+      const sectionMatch = text.match(/##\s*Generated Output[:\s]*([\s\S]*?)(?:##|$)/i);
+      if (sectionMatch) {
+        const inner = sectionMatch[1].trim();
+        const jsonBlock = inner.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+        if (jsonBlock) return JSON.parse(jsonBlock[0]);
+      }
+    } catch {}
+
+    // 4. Last resort: find the outermost JSON object or array
+    try {
+      const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+    } catch {}
+
     return text;
   }
 
@@ -137,14 +169,14 @@ class LLMService {
       }
     }
 
-    return this.run('testplan/test-plan-generator', { TITLE: contextTitle, ACCEPTANCE_CRITERIA: contextCriteria }); 
+    return this.run('testplan/test-plan-generator', { TITLE: contextTitle, ACCEPTANCE_CRITERIA: contextCriteria }, options); 
   }
   
-  async generateTestCases(story) { 
-    return this.run('testcase/testcase-generator', { INPUT_DATA: story }); 
+  async generateTestCases(story, options = {}) { 
+    return this.run('testcase/testcase-generator', { INPUT_DATA: story }, options); 
   }
   
-  async generateUserStories(input) { 
+  async generateUserStories(input, options = {}) { 
     let context = input;
 
     // Phase: URL Intelligence Integration
@@ -168,15 +200,15 @@ class LLMService {
     return this.run('userstory/userstory-engine', { INPUT_DATA: context }); 
   }
 
-  async generateScenarios(story) { 
+  async generateScenarios(story, options = {}) { 
     // Align with testscenarios/test-scenario.md (STORY, AC)
     const storyTitle = typeof story === 'string' ? story : (story.title || '');
     const storyAC    = typeof story === 'string' ? '' : (Array.isArray(story.acceptance_criteria) ? story.acceptance_criteria.join("\n") : (story.acceptance_criteria || ''));
     
-    return this.run('testscenarios/test-scenario', { STORY: storyTitle, AC: storyAC }); 
+    return this.run('testscenarios/test-scenario', { STORY: storyTitle, AC: storyAC }, options); 
   }
 
-  async generateApiScenarios(story) {
+  async generateApiScenarios(story, options = {}) {
     // Build a rich string representation of the user story for the prompt
     let userStoryText;
     if (typeof story === 'string') {
@@ -189,19 +221,30 @@ class LLMService {
         : (story.acceptance_criteria || '');
       userStoryText = `Title: ${title}\nDescription: ${desc}\nAcceptance Criteria:\n${ac}`;
     }
-    return this.run('api/api-test-scenario', { USER_STORY: userStoryText });
+    return this.run('api/api-test-scenario', { USER_STORY: userStoryText }, options);
   }
 
-  async generateApiTestCases(apiData) {
-    const apiDataText = typeof apiData === 'string' ? apiData : JSON.stringify(apiData, null, 2);
-    return this.run('api/api-test-case', { API_DATA: apiDataText });
+  async generateApiTestCases(apiData, options = {}) {
+    // Sanitize input — remove anti-hallucination artifacts before sending to LLM
+    let cleanData = typeof apiData === 'string' ? apiData : { ...apiData };
+    if (typeof cleanData === 'object') {
+      const stripLabel = (v) => (typeof v === 'string'
+        ? v.replace(/Inference\s*\(low confidence\)\s*[-–]?\s*/gi, '').trim()
+        : v);
+      cleanData.endpoint_hint = stripLabel(cleanData.endpoint_hint);
+      cleanData.endpoint      = stripLabel(cleanData.endpoint);
+      cleanData.title         = stripLabel(cleanData.title);
+      cleanData.description   = stripLabel(cleanData.description);
+    }
+    const apiDataText = typeof cleanData === 'string' ? cleanData : JSON.stringify(cleanData, null, 2);
+    return this.run('api/api-test-case', { INPUT_DATA: apiDataText }, options);
   }
 
-  async analyzeCoverage(cases, story = "") { 
-    return this.run('coverage/analysis', { TEST_CASES: cases, USER_STORY: story }); 
+  async analyzeCoverage(cases, story = "", options = {}) { 
+    return this.run('coverage/analysis', { TEST_CASES: cases, USER_STORY: story }, options); 
   }
 
-  async generateCode(testCaseData) { 
+  async generateCode(testCaseData, options = {}) { 
     const title = typeof testCaseData === 'string' ? testCaseData : (testCaseData.title || testCaseData.Description || 'Test');
     const steps = testCaseData.steps || testCaseData.Steps || [];
     const elements = testCaseData.elements || [];
@@ -212,43 +255,64 @@ class LLMService {
       STEPS: JSON.stringify(steps), 
       ELEMENTS: JSON.stringify(elements),
       URL: url
-    }); 
+    }, options); 
   }
 
-  async analyzeURL(url) { 
+  async analyzeURL(url, options = {}) { 
     try {
         const scrapedData = await scraperService.scrape(url);
         
         // If scraping returned 0 elements (blocked/timeout), pass URL directly to AI
         const hasElements = scrapedData.elements && scrapedData.elements.length > 0;
-        const uiData = hasElements 
-            ? JSON.stringify(scrapedData.elements, null, 2)
-            : `Could not scrape DOM. Analyze the URL "${url}" and infer UI elements based on the domain name, page title: "${scrapedData.title}" and common UX patterns for this type of site.`;
+        const isBlocked = scrapedData.status >= 400 || (scrapedData.title === 'Blocked / Unavailable');
+
+        const contextInfo = isBlocked
+            ? `The scraper was blocked (Status: ${scrapedData.status}). Use only the page title "${scrapedData.title}" and the domain name to infer common e-commerce/SaaS features for this site.`
+            : hasElements 
+                ? JSON.stringify(scrapedData.elements, null, 2)
+                : `No specific UI elements were found but scraping was successful. Infer common features for "${scrapedData.title}".`;
 
         const intelligence = await this.run('DOM Intelligence Layer/phase-web-scraping-dom', { 
             URL: url,
-            UI_DATA: uiData 
-        });
+            UI_DATA: contextInfo 
+        }, options);
         
         let finalIntel = intelligence;
         if (typeof intelligence === 'string') {
+            const cleanSummary = intelligence.length > 300 
+                ? `An application detected at ${url}. It likely follows standard industry patterns for ${scrapedData.title}.`
+                : intelligence;
+
             finalIntel = {
-               app_type: "Unknown site",
-               features: ["Standard navigation structure"],
-               flows: ["Page exploration"],
-               raw_summary: intelligence
+               app_type: isBlocked ? "Auto-Inferred System" : "Web Portal",
+               complexity: "Inferred",
+               features: ["Standard portal features"],
+               flows: ["Primary user exploration"],
+               raw_summary: cleanSummary
             };
         }
 
         return {
             url: url,
             title: scrapedData.title || url,
-            elements: hasElements ? scrapedData.elements : [],
-            intelligence: finalIntel
+            status: scrapedData.status,
+            elements: scrapedData.elements || [],
+            intelligence: finalIntel || {}
         };
     } catch (err) {
-        console.error('[analyzeURL] Fatal error:', err.message);
-        return { url, elements: [], error: "Scraping failed." };
+        console.error('[analyzeURL] Inference error:', err.message);
+        return { 
+          url, 
+          elements: [], 
+          status: 500, 
+          error: err.message,
+          intelligence: {
+            app_type: "Error during analysis",
+            features: ["Check network / API keys"],
+            flows: ["No flows detected"],
+            raw_summary: `Deep intelligence failed: ${err.message}`
+          }
+        };
     }
   }
 }

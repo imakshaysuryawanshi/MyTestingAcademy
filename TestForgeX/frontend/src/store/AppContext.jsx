@@ -4,38 +4,31 @@ const AppContext = createContext();
 
 export function AppProvider({ children }) {
   const [testCases, setTestCases] = useState(() => {
-    const saved = localStorage.getItem('tfx_testcases');
-    return saved ? JSON.parse(saved) : [];
+    try { const saved = localStorage.getItem('tfx_testcases'); const p = saved ? JSON.parse(saved) : []; return Array.isArray(p) ? p : []; } catch { return []; }
   });
   
   const [testPlans, setTestPlans] = useState(() => {
-    const saved = localStorage.getItem('tfx_testplans');
-    return saved ? JSON.parse(saved) : [];
+    try { const saved = localStorage.getItem('tfx_testplans'); const p = saved ? JSON.parse(saved) : []; return Array.isArray(p) ? p : []; } catch { return []; }
   });
   
   const [stories, setStories] = useState(() => {
-    const saved = localStorage.getItem('tfx_stories');
-    return saved ? JSON.parse(saved) : [];
+    try { const saved = localStorage.getItem('tfx_stories'); const p = saved ? JSON.parse(saved) : []; return Array.isArray(p) ? p : []; } catch { return []; }
   });
   
   const [savedScripts, setSavedScripts] = useState(() => {
-    const saved = localStorage.getItem('tfx_saved_scripts');
-    return saved ? JSON.parse(saved) : [];
+    try { const saved = localStorage.getItem('tfx_saved_scripts'); const p = saved ? JSON.parse(saved) : []; return Array.isArray(p) ? p : []; } catch { return []; }
   });
 
   const [scenarios, setScenarios] = useState(() => {
-    const saved = localStorage.getItem('tfx_scenarios');
-    return saved ? JSON.parse(saved) : [];
+    try { const saved = localStorage.getItem('tfx_scenarios'); const p = saved ? JSON.parse(saved) : []; return Array.isArray(p) ? p : []; } catch { return []; }
   });
 
   const [apiScenarios, setApiScenarios] = useState(() => {
-    const saved = localStorage.getItem('tfx_api_scenarios');
-    return saved ? JSON.parse(saved) : [];
+    try { const saved = localStorage.getItem('tfx_api_scenarios'); const p = saved ? JSON.parse(saved) : []; return Array.isArray(p) ? p : []; } catch { return []; }
   });
 
   const [apiTestCases, setApiTestCases] = useState(() => {
-    const saved = localStorage.getItem('tfx_api_testcases');
-    return saved ? JSON.parse(saved) : [];
+    try { const saved = localStorage.getItem('tfx_api_testcases'); const p = saved ? JSON.parse(saved) : []; return Array.isArray(p) ? p : []; } catch { return []; }
   });
   
   const [theme, setTheme] = useState(() => {
@@ -43,7 +36,7 @@ export function AppProvider({ children }) {
   });
 
   const defaultSettings = {
-    model: { provider: "ollama", id: "llama3:8b-instruct-q4_0", temperature: 0.3, maxTokens: 700, apiKey: "" },
+    model: { provider: "ollama", id: "llama3:latest", temperature: 0.3, maxTokens: 700, apiKey: "", ollamaUrl: "http://127.0.0.1:11434" },
     prompts: { testPlan: "testplan/universal", testCase: "testcase/universal", coverage: "coverage/analysis", codeGen: "codegen/selenium-java", apiScenario: "api/api-test-scenario", apiTestCase: "api/api-test-case" },
     execution: { enableRetry: true, maxRetries: 1, enableQueue: false },
     output: { defaultStatus: "Draft", autoSave: true, jsonValidation: true }
@@ -55,6 +48,12 @@ export function AppProvider({ children }) {
     
     // Deep merge defaults with saved to ensure new keys (like apiScenario) exist
     const parsed = JSON.parse(saved);
+    if (parsed.model && parsed.model.id === "llama3:8b-instruct-q4_0") {
+      parsed.model.id = "llama3:latest";
+    }
+    if (parsed.model && parsed.model.ollamaUrl === "http://localhost:11434") {
+      parsed.model.ollamaUrl = "http://127.0.0.1:11434";
+    }
     return {
       ...defaultSettings,
       ...parsed,

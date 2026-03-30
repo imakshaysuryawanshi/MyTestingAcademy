@@ -23,12 +23,13 @@ router.get('/ping-prompts', (req, res) => {
 
 /** GET /api/providers — list available providers and their status */
 router.get('/providers', async (req, res) => {
+  const { ollamaUrl } = req.query;
   const { ollamaProvider } = await import('../providers/ollama.provider.js');
   const { groqProvider }   = await import('../providers/groq.provider.js');
   const { grokProvider }   = await import('../providers/grok.provider.js');
 
   const results = await Promise.all([
-    ollamaProvider.isAvailable().then(ok => ({ name: 'ollama', available: ok })),
+    ollamaProvider.isAvailable(ollamaUrl).then(ok => ({ name: 'ollama', available: ok })),
     groqProvider.isAvailable().then(ok   => ({ name: 'groq',   available: ok })),
     grokProvider.isAvailable().then(ok   => ({ name: 'grok',   available: ok })),
   ]);
@@ -43,11 +44,11 @@ router.get('/providers', async (req, res) => {
  * Body: { context: string }
  */
 router.post('/testplan/generate', async (req, res) => {
-  const { title, criteria } = req.body;
+  const { title, criteria, settings } = req.body;
   if (!title) return res.status(400).json({ error: 'title is required' });
 
   try {
-    const result = await llmService.generateTestPlan(title, criteria || "");
+    const result = await llmService.generateTestPlan(title, criteria || "", settings);
     res.json({ success: true, data: result });
   } catch (err) {
     console.error('[/testplan/generate]', err.message);
@@ -62,11 +63,11 @@ router.post('/testplan/generate', async (req, res) => {
  * Body: { story: { title, description, acceptance_criteria } }
  */
 router.post('/testcases/generate', async (req, res) => {
-  const { story } = req.body;
+  const { story, settings } = req.body;
   if (!story) return res.status(400).json({ error: 'story object is required' });
 
   try {
-    const result = await llmService.generateTestCases(story);
+    const result = await llmService.generateTestCases(story, settings);
     res.json({ success: true, data: result });
   } catch (err) {
     console.error('[/testcases/generate]', err.message);
@@ -80,11 +81,11 @@ router.post('/testcases/generate', async (req, res) => {
  * Body: { story: { title, description, acceptance_criteria } }
  */
 router.post('/scenarios/generate', async (req, res) => {
-  const { story } = req.body;
+  const { story, settings } = req.body;
   if (!story) return res.status(400).json({ error: 'story object is required' });
 
   try {
-    const result = await llmService.generateScenarios(story);
+    const result = await llmService.generateScenarios(story, settings);
     res.json({ success: true, data: result });
   } catch (err) {
     console.error('[/scenarios/generate]', err.message);
@@ -99,11 +100,11 @@ router.post('/scenarios/generate', async (req, res) => {
  * Body: { story: string | object }
  */
 router.post('/api-scenarios/generate', async (req, res) => {
-  const { story } = req.body;
+  const { story, settings } = req.body;
   if (!story) return res.status(400).json({ error: 'story is required' });
 
   try {
-    const result = await llmService.generateApiScenarios(story);
+    const result = await llmService.generateApiScenarios(story, settings);
     res.json({ success: true, data: result });
   } catch (err) {
     console.error('[/api-scenarios/generate]', err.message);
@@ -118,11 +119,11 @@ router.post('/api-scenarios/generate', async (req, res) => {
  * Body: { apiData: string | object }
  */
 router.post('/api-testcases/generate', async (req, res) => {
-  const { apiData } = req.body;
+  const { apiData, settings } = req.body;
   if (!apiData) return res.status(400).json({ error: 'apiData is required' });
 
   try {
-    const result = await llmService.generateApiTestCases(apiData);
+    const result = await llmService.generateApiTestCases(apiData, settings);
     res.json({ success: true, data: result });
   } catch (err) {
     console.error('[/api-testcases/generate]', err.message);
@@ -137,11 +138,11 @@ router.post('/api-testcases/generate', async (req, res) => {
  * Body: { input: string }
  */
 router.post('/userstory/generate', async (req, res) => {
-  const { input } = req.body;
+  const { input, settings } = req.body;
   if (!input) return res.status(400).json({ error: 'input is required' });
 
   try {
-    const result = await llmService.generateUserStories(input);
+    const result = await llmService.generateUserStories(input, settings);
     res.json({ success: true, data: result });
   } catch (err) {
     console.error('[/userstory/generate]', err.message);
@@ -156,11 +157,11 @@ router.post('/userstory/generate', async (req, res) => {
  * Body: { testCases: array }
  */
 router.post('/coverage/analyze', async (req, res) => {
-  const { testCases } = req.body;
+  const { testCases, story, settings } = req.body;
   if (!testCases) return res.status(400).json({ error: 'testCases array is required' });
 
   try {
-    const result = await llmService.analyzeCoverage(testCases);
+    const result = await llmService.analyzeCoverage(testCases, story || "", settings);
     res.json({ success: true, data: result });
   } catch (err) {
     console.error('[/coverage/analyze]', err.message);
@@ -175,11 +176,11 @@ router.post('/coverage/analyze', async (req, res) => {
  * Body: { testCaseTitle: string }
  */
 router.post('/codegen/generate', async (req, res) => {
-  const { testCaseTitle } = req.body;
+  const { testCaseTitle, settings } = req.body;
   if (!testCaseTitle) return res.status(400).json({ error: 'testCaseTitle is required' });
 
   try {
-    const result = await llmService.generateCode(testCaseTitle);
+    const result = await llmService.generateCode(testCaseTitle, settings);
     res.json({ success: true, data: result });
   } catch (err) {
     console.error('[/codegen/generate]', err.message);
@@ -194,11 +195,11 @@ router.post('/codegen/generate', async (req, res) => {
  * Body: { url: string }
  */
 router.post('/url/analyze', async (req, res) => {
-  const { url } = req.body;
+  const { url, settings } = req.body;
   if (!url) return res.status(400).json({ error: 'url is required' });
 
   try {
-    const result = await llmService.analyzeURL(url);
+    const result = await llmService.analyzeURL(url, settings);
     res.json({ success: true, data: result });
   } catch (err) {
     console.error('[/url/analyze]', err.message);

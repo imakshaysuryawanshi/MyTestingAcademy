@@ -29,8 +29,8 @@ export default function HistoryPage() {
 
   // Normalize all items into a unified list with a type tag
   const allItems = [
-    ...testCases.map(c    => ({ ...c,  _type: "testCases",    _label: c.title || c.id || "Untitled Case" })),
-    ...testPlans.map((p, i) => ({
+    ...(Array.isArray(testCases) ? testCases : []).map(c    => ({ ...c,  _type: "testCases",    _label: c.title || c.id || "Untitled Case" })),
+    ...(Array.isArray(testPlans) ? testPlans : []).map((p, i) => ({
       ...p,
       _type: "testPlans",
       _label: (p.objective && !p.objective.startsWith('%') && p.objective.length < 120)
@@ -38,10 +38,10 @@ export default function HistoryPage() {
         : `Test Plan #${i + 1}`,
       _sub: p.scope || null,
     })),
-    ...scenarios.map(sc   => ({ ...sc, _type: "scenarios",    _label: sc.title || "Untitled Scenario" })),
-    ...stories.map(s      => ({ ...s,  _type: "stories",      _label: s.title  || "Untitled Story" })),
-    ...apiScenarios.map(a => ({ ...a,  _type: "apiScenarios", _label: a.title  || "Untitled API Scenario", _sub: a.endpoint_hint || null })),
-    ...apiTestCases.map(a => ({ ...a,  _type: "apiTestCases", _label: a.title  || "Untitled API Test Case", _sub: a.request ? `${a.request.method} ${a.request.endpoint}` : null })),
+    ...(Array.isArray(scenarios) ? scenarios : []).map(sc   => ({ ...sc, _type: "scenarios",    _label: sc.title || "Untitled Scenario" })),
+    ...(Array.isArray(stories) ? stories : []).map(s      => ({ ...s,  _type: "stories",      _label: s.title  || "Untitled Story" })),
+    ...(Array.isArray(apiScenarios) ? apiScenarios : []).map(a => ({ ...a,  _type: "apiScenarios", _label: a.title  || "Untitled API Scenario", _sub: a.endpoint_hint || null })),
+    ...(Array.isArray(apiTestCases) ? apiTestCases : []).map(a => ({ ...a,  _type: "apiTestCases", _label: a.title  || "Untitled API Test Case", _sub: a.request ? `${a.request.method} ${a.request.endpoint}` : null })),
   ];
 
   const visibleItems = activeTab === "all" ? allItems : allItems.filter(i => i._type === activeTab);
@@ -68,13 +68,13 @@ export default function HistoryPage() {
   };
 
   const counts = {
-    testCases:    testCases.length,
-    testPlans:    testPlans.length,
-    scenarios:    scenarios.length,
-    stories:      stories.length,
-    apiScenarios: apiScenarios.length,
-    apiTestCases: apiTestCases.length,
-    total:        allItems.length,
+    testCases:    (testCases || []).length,
+    testPlans:    (testPlans || []).length,
+    scenarios:    (scenarios || []).length,
+    stories:      (stories || []).length,
+    apiScenarios: (apiScenarios || []).length,
+    apiTestCases: (apiTestCases || []).length,
+    total:        (allItems || []).length,
   };
 
   return (
