@@ -36,7 +36,7 @@ export function AppProvider({ children }) {
   });
 
   const defaultSettings = {
-    model: { provider: "ollama", id: "llama3:latest", temperature: 0.3, maxTokens: 700, apiKey: "", ollamaUrl: "http://127.0.0.1:11434" },
+    model: { provider: "groq", id: "llama-3.3-70b-versatile", temperature: 0.3, maxTokens: 2048, apiKey: "", ollamaUrl: "http://127.0.0.1:11434" },
     prompts: { testPlan: "testplan/universal", testCase: "testcase/universal", coverage: "coverage/analysis", codeGen: "codegen/selenium-java", apiScenario: "api/api-test-scenario", apiTestCase: "api/api-test-case" },
     execution: { enableRetry: true, maxRetries: 1, enableQueue: false },
     output: { defaultStatus: "Draft", autoSave: true, jsonValidation: true }
@@ -48,8 +48,11 @@ export function AppProvider({ children }) {
     
     // Deep merge defaults with saved to ensure new keys (like apiScenario) exist
     const parsed = JSON.parse(saved);
-    if (parsed.model && parsed.model.id === "llama3:8b-instruct-q4_0") {
+    if (parsed.model && (parsed.model.id === "llama3:8b-instruct-q4_0" || parsed.model.id === "llama3-8b-8192")) {
       parsed.model.id = "llama3:latest";
+    }
+    if (parsed.model && parsed.model.id === "llama3-70b-8192") {
+      parsed.model.id = "llama-3.3-70b-versatile";
     }
     if (parsed.model && parsed.model.ollamaUrl === "http://localhost:11434") {
       parsed.model.ollamaUrl = "http://127.0.0.1:11434";

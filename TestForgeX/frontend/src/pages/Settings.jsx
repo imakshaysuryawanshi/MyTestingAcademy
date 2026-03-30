@@ -17,10 +17,9 @@ const PROVIDER_MODELS = {
     "phi3:mini",
   ],
   groq: [
-    "llama3-70b-8192",
+    "llama-3.3-70b-versatile",
     "llama3-8b-8192",
     "mixtral-8x7b-32768",
-    "gemma-7b-it",
     "gemma2-9b-it",
   ],
   grok: [
@@ -139,6 +138,17 @@ export default function Settings() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <button 
+            onClick={() => {
+              if (window.confirm("Clear all locally saved test cases and history? This resets the app to a clean state.")) {
+                localStorage.clear();
+                window.location.reload();
+              }
+            }}
+            className="btn bg-red-500/10 border border-red-500/40 px-5 py-2.5 rounded-xl flex items-center gap-2 text-red-400 hover:bg-red-500 hover:text-white transition-all"
+          >
+            <Trash2 size={16} /> Clear Local Cache
+          </button>
           <button onClick={handleReset} disabled={!isDirty}
             className={`btn bg-[#1A2330] border border-border/60 px-5 py-2.5 rounded-xl flex items-center gap-2 text-gray-400 hover:text-white hover:bg-[#252D3D] hover:border-accent/40 transition-all ${!isDirty ? "opacity-30 cursor-not-allowed" : ""}`}>
             <RotateCcw size={16} /> Discard

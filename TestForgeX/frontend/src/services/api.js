@@ -5,12 +5,39 @@
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Safely parse data that may be double-serialized (LLM returns JSON string wrapped in JSON)
+// Aggressively extract and parse JSON from noisy AI text (Phase 10: Reliability)
 const safeParse = (data) => {
-  if (typeof data === 'string') {
-    try { return JSON.parse(data); } catch { return data; }
-  }
-  return data;
+  if (typeof data !== 'string') return data;
+  
+  const text = data.trim();
+  if (!text) return null;
+
+  // 1. Direct parse attempt
+  try { return JSON.parse(text); } catch {}
+
+  // 2. Strip common markdown fences
+  let clean = text.replace(/```json\s*|```\s*/gi, '').replace(/```$/g, '').trim();
+  try { return JSON.parse(clean); } catch {}
+
+  // 3. Find outermost { or [
+  try {
+    const firstObj = text.indexOf('{');
+    const firstArr = text.indexOf('[');
+    const start = (firstObj !== -1 && (firstArr === -1 || firstObj < firstArr)) ? firstObj : firstArr;
+    
+    if (start !== -1) {
+      const lastObj = text.lastIndexOf('}');
+      const lastArr = text.lastIndexOf(']');
+      const end = Math.max(lastObj, lastArr);
+      
+      if (end !== -1 && end > start) {
+        const potentialJson = text.substring(start, end + 1);
+        return JSON.parse(potentialJson);
+      }
+    }
+  } catch {}
+
+  return data; // Final fallback: raw text
 };
 
 // Phase 24 Helper: Get current settings from localStorage to pass to backend
@@ -82,15 +109,35 @@ export const api = {
         const json = await response.json();
         
         if (json.success && json.data) {
-          // Flatten AI JSON structure with multiple fallbacks
-          let testCasesArray = json.data.test_cases || json.data.test_case || json.data.cases || json.data.result || json.data;
+          // Robustly find the test cases array within potentially nested structures
+          const findTestCases = (obj) => {
+            if (!obj) return null;
+            const parsed = typeof obj === 'string' ? safeParse(obj) : obj;
+            if (Array.isArray(parsed)) return parsed;
+            if (typeof parsed !== 'object') return null;
+
+            // Direct search for common keys
+            const keys = ['test_cases', 'test_case', 'cases', 'testcases', 'result', 'data'];
+            for (const k of keys) {
+              if (Array.isArray(parsed[k])) return parsed[k];
+            }
+
+            // Recursive search
+            for (const k of Object.keys(parsed)) {
+               if (typeof parsed[k] === 'object' && parsed[k] !== null) {
+                  const deep = findTestCases(parsed[k]);
+                  if (deep) return deep;
+               }
+            }
+            return null;
+          };
+
+          let testCasesArray = findTestCases(json.data);
           
-          if (!Array.isArray(testCasesArray)) {
-              if (testCasesArray && typeof testCasesArray === 'object') {
-                testCasesArray = [testCasesArray];
-              } else if (typeof testCasesArray === 'string' && testCasesArray.trim().length > 0) {
-                // If AI returns pure text, don't return 0. Wrap it so user can see it.
-                testCasesArray = [{ Description: testCasesArray, Title: "Re-parsed from AI text" }];
+          if (!testCasesArray) {
+              const rawData = typeof json.data === 'string' ? json.data : JSON.stringify(json.data);
+              if (rawData && rawData.length > 5) {
+                testCasesArray = [{ Description: rawData, Title: "Re-parsed from AI text (Fallback)" }];
               } else {
                 testCasesArray = [];
               }

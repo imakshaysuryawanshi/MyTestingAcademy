@@ -13,10 +13,10 @@ export const groqProvider = {
   /**
    * Send a prompt to Groq and return the response text
    * @param {string} prompt  - The compiled prompt string
-   * @param {string} model   - Model name (e.g. 'llama3-70b-8192')
+   * @param {string} model   - Model name (e.g. 'llama-3.3-70b-versatile')
    * @param {object} options - { temperature, maxTokens }
    */
-  async generate(prompt, model = 'llama3-70b-8192', options = {}) {
+  async generate(prompt, model = 'llama-3.3-70b-versatile', options = {}) {
     const { temperature = 0.3, maxTokens = 700 } = options;
     const apiKey = process.env.GROQ_API_KEY;
 

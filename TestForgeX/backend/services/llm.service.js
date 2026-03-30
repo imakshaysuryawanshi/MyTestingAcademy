@@ -107,8 +107,25 @@ class LLMService {
   _tryParseJSON(text) {
     if (!text || typeof text !== 'string') return text;
 
+    // Helper to fix truncated JSON by appending closing brackets
+    const repair = (str) => {
+        let s = str.trim();
+        let openBraces = 0;
+        let openBrackets = 0;
+        for (let char of s) {
+            if (char === '{') openBraces++;
+            if (char === '}') openBraces--;
+            if (char === '[') openBrackets++;
+            if (char === ']') openBrackets--;
+        }
+        while (openBrackets > 0) { s += ']'; openBrackets--; }
+        while (openBraces > 0) { s += '}'; openBraces--; }
+        return s;
+    };
+
     // 1. Direct parse
     try { return JSON.parse(text); } catch {}
+    try { return JSON.parse(repair(text)); } catch {}
 
     // 2. Extract from ```json ... ``` fences
     try {
@@ -130,8 +147,20 @@ class LLMService {
 
     // 4. Last resort: find the outermost JSON object or array
     try {
-      const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+      const firstObj = text.indexOf('{');
+      const firstArr = text.indexOf('[');
+      const start = (firstObj !== -1 && (firstArr === -1 || firstObj < firstArr)) ? firstObj : firstArr;
+      
+      if (start !== -1) {
+        const lastObj = text.lastIndexOf('}');
+        const lastArr = text.lastIndexOf(']');
+        const end = Math.max(lastObj, lastArr);
+        
+        if (end !== -1 && end > start) {
+          const potentialJson = text.substring(start, end + 1);
+          return JSON.parse(potentialJson);
+        }
+      }
     } catch {}
 
     return text;
