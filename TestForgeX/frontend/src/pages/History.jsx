@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { History as HistoryIcon, Trash2, Trash, FileText, ListChecks, Users, AlertTriangle, Clock, FlaskConical, Wifi, Code2 } from "lucide-react";
-import { useAppStore } from "../store/AppContext";
+import { History as HistoryIcon, Trash2, Trash, FileText, ListChecks, Users, AlertTriangle, Clock, FlaskConical, Wifi, Code2, TerminalSquare } from "lucide-react";
+import { useAppStore } from "../store/useAppStore";
 
 const TABS = [
   { key: "all",          label: "All",              icon: HistoryIcon },
@@ -10,6 +10,7 @@ const TABS = [
   { key: "stories",      label: "User Stories",     icon: Users },
   { key: "apiScenarios", label: "API Scenarios",    icon: Wifi },
   { key: "apiTestCases", label: "API Test Cases",   icon: Code2 },
+  { key: "savedScripts", label: "Code Scripts",     icon: TerminalSquare },
 ];
 
 const typeConfig = {
@@ -19,11 +20,12 @@ const typeConfig = {
   stories:      { label: "User Story",     color: "text-green-400",  bg: "bg-green-400/10",  border: "border-green-400/20"  },
   apiScenarios: { label: "API Scenario",   color: "text-cyan-400",   bg: "bg-cyan-400/10",   border: "border-cyan-400/20"   },
   apiTestCases: { label: "API Test Case",  color: "text-violet-400", bg: "bg-violet-400/10", border: "border-violet-400/20" },
+  savedScripts: { label: "Automation",     color: "text-accent",     bg: "bg-accent/10",     border: "border-accent/20"     },
 };
 
 export default function HistoryPage() {
   const { testCases, setTestCases, testPlans, setTestPlans, stories, setStories, scenarios, setScenarios,
-          apiScenarios, setApiScenarios, apiTestCases, setApiTestCases, showToast } = useAppStore();
+          apiScenarios, setApiScenarios, apiTestCases, setApiTestCases, savedScripts, setSavedScripts, showToast } = useAppStore();
   const [activeTab, setActiveTab] = useState("all");
   const [showConfirmClear, setShowConfirmClear] = useState(false);
 
@@ -42,6 +44,7 @@ export default function HistoryPage() {
     ...(Array.isArray(stories) ? stories : []).map(s      => ({ ...s,  _type: "stories",      _label: s.title  || "Untitled Story" })),
     ...(Array.isArray(apiScenarios) ? apiScenarios : []).map(a => ({ ...a,  _type: "apiScenarios", _label: a.title  || "Untitled API Scenario", _sub: a.endpoint_hint || null })),
     ...(Array.isArray(apiTestCases) ? apiTestCases : []).map(a => ({ ...a,  _type: "apiTestCases", _label: a.title  || "Untitled API Test Case", _sub: a.request ? `${a.request.method} ${a.request.endpoint}` : null })),
+    ...(Array.isArray(savedScripts) ? savedScripts : []).map(s => ({ ...s,  _type: "savedScripts", _label: s.title  || "Untitled Script", _sub: s.code ? `${s.code.substring(0, 50)}...` : null })),
   ];
 
   const visibleItems = activeTab === "all" ? allItems : allItems.filter(i => i._type === activeTab);
@@ -53,6 +56,7 @@ export default function HistoryPage() {
     if (item._type === "stories")      setStories(prev      => prev.filter(s  => s.title  !== item.title));
     if (item._type === "apiScenarios") setApiScenarios(prev => prev.filter(a  => a.id     !== item.id && a.title !== item.title));
     if (item._type === "apiTestCases") setApiTestCases(prev => prev.filter(a  => a.id     !== item.id && a.title !== item.title));
+    if (item._type === "savedScripts") setSavedScripts(prev => prev.filter(s  => s.id     !== item.id));
     showToast("Item removed from history", "info");
   };
 
@@ -63,6 +67,7 @@ export default function HistoryPage() {
     setScenarios([]);
     setApiScenarios([]);
     setApiTestCases([]);
+    setSavedScripts([]);
     setShowConfirmClear(false);
     showToast("History cleared", "success");
   };
@@ -74,6 +79,7 @@ export default function HistoryPage() {
     stories:      (stories || []).length,
     apiScenarios: (apiScenarios || []).length,
     apiTestCases: (apiTestCases || []).length,
+    savedScripts: (savedScripts || []).length,
     total:        (allItems || []).length,
   };
 

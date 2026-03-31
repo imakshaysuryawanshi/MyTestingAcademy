@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronUp, ArrowRight, FlaskConical, Tag, Download, Trash2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useAppStore } from "../store/AppContext";
+import { useAppStore } from "../store/useAppStore";
 import { api } from "../services/api";
 
 const typeColors = {
@@ -106,7 +106,7 @@ function ScenarioCard({ scenario, onDelete, onGenerateTestCases, isGenerating })
 
 export default function APIScenarios() {
   const navigate = useNavigate();
-  const { stories, apiScenarios, setApiScenarios, setApiTestCases, showToast } = useAppStore();
+  const { stories, apiScenarios, addApiScenarios, addApiTestCases, showToast } = useAppStore();
   const [activeStory, setActiveStory] = useState(null);
   const [loading, setLoading] = useState(false);
   const [genId, setGenId]   = useState(null); // scenario being processed for test cases
@@ -126,7 +126,8 @@ export default function APIScenarios() {
         return;
       }
 
-      const scenarios = data.api_test_scenarios || [];
+      // Resilient extraction — LLMs sometimes fluctuate keys (api_test_scenarios vs test_scenarios etc)
+      const scenarios = data.api_test_scenarios || api.extractArtifactList(data, ["api_test_scenarios", "scenarios"]);
       if (scenarios.length === 0) {
         showToast("No API scenarios returned. Try a richer story.", "error");
         return;
@@ -139,7 +140,7 @@ export default function APIScenarios() {
         _sourceStory: story.title, 
         _generatedAt: new Date().toISOString() 
       }));
-      setApiScenarios(prev => [...tagged, ...prev]);
+      addApiScenarios(tagged);
       setResult({ scenarios: tagged, reason: data.reason });
       showToast(`✓ ${tagged.length} API scenarios generated!`, "success");
     } catch (err) {
@@ -204,16 +205,7 @@ export default function APIScenarios() {
         };
       });
 
-      setApiTestCases(prev => {
-         // Use a more global ID since this list can grow
-         const startIdx = prev.length;
-         const finalEnriched = enriched.map((e, i) => ({
-           ...e,
-           id: `ATC-${String(startIdx + i + 1).padStart(3, '0')}`
-         }));
-         return [...prev, ...finalEnriched];
-      });
-      
+      addApiTestCases(enriched);
       showToast(`✓ ${enriched.length} API Test Cases created!`, "success");
       
       // Navigate to API Test Cases page

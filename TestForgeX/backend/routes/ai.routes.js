@@ -10,6 +10,7 @@
 import { Router } from 'express';
 import { llmService } from '../services/llm.service.js';
 import { promptLoader } from '../src/utils/promptLoader.js';
+import { jiraService } from '../services/jira.service.js';
 
 const router = Router();
 
@@ -203,6 +204,43 @@ router.post('/url/analyze', async (req, res) => {
     res.json({ success: true, data: result });
   } catch (err) {
     console.error('[/url/analyze]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── Jira Integration ──────────────────────────────────────────────────────────
+
+/**
+ * POST /api/jira/fetch
+ * Body: { issueId: string, creds: { url, email, token } }
+ */
+router.post('/jira/fetch', async (req, res) => {
+  const { issueId, creds } = req.body;
+  if (!issueId) return res.status(400).json({ error: 'issueId is required' });
+  if (!creds) return res.status(400).json({ error: 'Jira credentials are required' });
+
+  try {
+    const issue = await jiraService.fetchIssue(issueId, creds);
+    res.json({ success: true, data: issue });
+  } catch (err) {
+    console.error('[/jira/fetch]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/jira/generate-artifacts
+ * Body: { issueData: object, settings: object }
+ */
+router.post('/jira/generate-artifacts', async (req, res) => {
+  const { issueData, settings } = req.body;
+  if (!issueData) return res.status(400).json({ error: 'issueData is required' });
+
+  try {
+    const result = await llmService.generateJiraArtifacts(issueData, settings);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('[/jira/generate-artifacts]', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

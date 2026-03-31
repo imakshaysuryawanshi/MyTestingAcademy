@@ -4,7 +4,7 @@ import {
   Eye, X, Search, Filter, FileSpreadsheet
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { useAppStore } from "../store/AppContext";
+import { useAppStore } from "../store/useAppStore";
 import { api } from "../services/api";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ import {
   ChevronDown, ChevronUp
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useAppStore } from "../store/AppContext";
+import { useAppStore } from "../store/useAppStore";
 import { api } from "../services/api";
 
 // ── Helper: extract value by multiple key aliases ─────────────────────────────
@@ -27,12 +27,12 @@ const isPlaceholder = (val) => {
 
 // ── Helper: normalize a test case to consistent shape ─────────────────────────
 const normalizeTC = (tc, idx) => {
-  const id          = getVal(tc, ["ID","TID","id","tid","case_id","testCaseId"]) || `TC-${String(idx + 1).padStart(3,"0")}`;
+  const id          = getVal(tc, ["ID","TID","id","tid","case_id","testCaseId","Id","CaseID"]) || `TC-${String(idx + 1).padStart(3,"0")}`;
   // Aggressively search for Title in Description if Title is missing
-  const title       = getVal(tc, ["Title","title","Name","name","Title_Case","titleCase"]) || 
+  const title       = getVal(tc, ["Title","title","Name","name","Title_Case","titleCase","Tille","Summary","Summary_Title","Label","CaseTitle","Scenario"]) || 
                       (tc.Description && tc.Description.length < 50 ? tc.Description : "Unified Test Case");
-  const cat         = getVal(tc, ["Category","category","Type","type","tag"]) || "Functional";
-  const desc        = getVal(tc, ["Description","description","summary","scenario","Detail","detail"]) || "—";
+  const cat         = getVal(tc, ["Category","category","Type","type","tag","Suite","Module"]) || "Functional";
+  const desc        = getVal(tc, ["Description","description","summary","scenario","Detail","detail","Outcome","Summary"]) || "—";
   const pre         = getVal(tc, ["Preconditions","Pre_conditions","pre_conditions","preconditions","precondition","setup"]) || "—";
   const stepsRaw    = getVal(tc, ["Steps","steps","Actions","actions","test_steps","testSteps"]);
   const stepsArr    = Array.isArray(stepsRaw) ? stepsRaw : (stepsRaw ? String(stepsRaw).split(/\||→|;/).map(s=>s.trim()) : []);
@@ -117,7 +117,7 @@ function Section({ label, value, mono }) {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function TestCases() {
-  const { testCases, setTestCases, showToast } = useAppStore();
+  const { testCases, setTestCases, showToast, scrapedElements } = useAppStore();
   const [searchQuery, setSearchQuery]     = useState("");
   const [filterPriority, setFilterPriority] = useState("All");
   const [actionLoading, setActionLoading] = useState(null);
@@ -146,7 +146,13 @@ export default function TestCases() {
   const handleGenerateCode = async (tc) => {
     setActionLoading(tc.id);
     try {
-      const response = await api.generateCode(tc._raw);
+      // Phase 22: Inject scraped elements from store so the AI can find real locators
+      const payload = { 
+        ...tc._raw, 
+        elements: scrapedElements || [],
+        Steps: tc.stepsArr // Ensure steps are passed in standard format
+      };
+      const response = await api.generateCode(payload);
       showToast(`✓ Selenium code generated for ${tc.id}`, "success");
       console.log("Generated Code:\n", response?.data);
     } catch (err) {

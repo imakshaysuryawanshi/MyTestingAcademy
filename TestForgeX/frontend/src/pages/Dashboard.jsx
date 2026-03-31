@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAppStore } from "../store/AppContext";
+import { useAppStore } from "../store/useAppStore";
 import {
   Users, FileText, ListChecks, ShieldCheck,
   AlertTriangle, Lightbulb, Kanban, Link2, Sparkles,
@@ -17,7 +17,7 @@ function MetricCard({ label, value, icon: Icon, color, to }) {
           <Icon size={18} className={color} />
         </div>
       </div>
-      <div className="text-4xl font-bold text-white tracking-tight">{value}</div>
+      <div className="text-3xl font-bold text-white tracking-tight">{value}</div>
       <div className="flex items-center gap-1 text-xs text-textMuted group-hover:text-accent transition-colors">
         View details <ArrowRight size={12} />
       </div>
@@ -115,7 +115,7 @@ export default function Dashboard() {
       {/* ── Header ── */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-white">QA Command Centre</h1>
+          <h1 className="text-2xl font-bold text-white">QA Command Centre</h1>
           <p className="text-textMuted text-sm mt-1">
             Lifecycle view: Stories → Plans → Cases → Coverage
           </p>

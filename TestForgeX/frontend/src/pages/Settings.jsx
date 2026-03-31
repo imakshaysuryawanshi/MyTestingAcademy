@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import {
   Settings as SettingsIcon, Save, RotateCcw, Cpu,
-  MessageSquareQuote, Zap, FolderOutput, Wifi, WifiOff,
-  Loader2, Eye, EyeOff, CheckCircle2, Trash2
+  Zap, FolderOutput, Wifi, WifiOff,
+  Loader2, Eye, EyeOff, CheckCircle2, Trash2, Kanban
 } from "lucide-react";
-import { useAppStore } from "../store/AppContext";
+import { useAppStore } from "../store/useAppStore";
 import { api } from "../services/api";
 
 // ── Provider model catalogue ──────────────────────────────────────────────────
@@ -50,18 +50,25 @@ export default function Settings() {
   const { settings, setSettings, setStories, setTestPlans, setTestCases, setScenarios,
           setApiScenarios, setApiTestCases, showToast } = useAppStore();
   const [localConfig, setLocalConfig] = useState(JSON.parse(JSON.stringify(settings)));
-  const [availablePrompts, setAvailablePrompts] = useState([]);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [connStatus, setConnStatus] = useState(null); // null | 'testing' | 'ok' | 'fail'
+  const [connStatus, setConnStatus] = useState(null);
+
+  // ── Jira credentials (stored in localStorage) ─────────────────────────────
+  const [jiraCreds, setJiraCreds] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tfx_jira_creds');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return { url: '', email: '', token: '' };
+  });
+  const [showJiraToken, setShowJiraToken] = useState(false);
+  const saveJiraCreds = () => {
+    localStorage.setItem('tfx_jira_creds', JSON.stringify(jiraCreds));
+    showToast("Jira credentials saved", "success");
+  };
 
   useEffect(() => {
-    api.fetchAvailablePrompts().then(res => {
-      if (res.success) setAvailablePrompts(res.data);
-    });
-  }, []);
-
-  // Ensure provider field exists (backward compat)
-  useEffect(() => {
+    // Ensure provider field exists (backward compat)
     if (!localConfig.model.provider) {
       setLocalConfig(prev => ({ ...prev, model: { provider: "ollama", apiKey: "", ...prev.model } }));
     }
@@ -195,8 +202,10 @@ export default function Settings() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Model</label>
+                <label htmlFor="setting-model-select" className="block text-sm font-medium text-gray-300 mb-1">Model</label>
                 <select
+                  id="setting-model-select"
+                  name="model-id"
                   className="input"
                   value={localConfig.model.id}
                   onChange={e => handleNestedChange("model", "id", e.target.value)}
@@ -207,11 +216,13 @@ export default function Settings() {
 
               {currentProvider === "ollama" && (
                 <div className="space-y-1">
-                  <label className="block text-sm font-medium text-gray-300 mb-1 flex items-center justify-between">
+                  <label htmlFor="setting-ollama-url" className="block text-sm font-medium text-gray-300 mb-1 flex items-center justify-between">
                     Ollama Endpoint URL
                     <span className="text-[10px] text-accent/70 uppercase">Localhost:11434</span>
                   </label>
                   <input
+                    id="setting-ollama-url"
+                    name="ollama-url"
                     type="text"
                     className="input font-mono text-sm bg-sidebar/50 focus:border-accent/60"
                     placeholder="e.g. http://localhost:11434"
@@ -246,10 +257,12 @@ export default function Settings() {
             {/* Temperature + Tokens */}
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1 flex justify-between">
+                <label htmlFor="setting-temp-slider" className="block text-sm font-medium text-gray-300 mb-1 flex justify-between">
                   Temperature <span className={`font-bold ${localConfig.model.temperature <= 0.3 ? "text-blue-400" : localConfig.model.temperature >= 0.8 ? "text-red-400" : "text-yellow-400"}`}>{localConfig.model.temperature}</span>
                 </label>
                 <input
+                  id="setting-temp-slider"
+                  name="temperature"
                   type="range" min="0.1" max="1.0" step="0.1"
                   className="w-full h-2 bg-sidebar rounded-lg appearance-none cursor-pointer accent-accent"
                   value={localConfig.model.temperature}
@@ -261,8 +274,10 @@ export default function Settings() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Token</label>
+                <label htmlFor="setting-token-input" className="block text-sm font-medium text-gray-300 mb-1">Token</label>
                 <input
+                  id="setting-token-input"
+                  name="max-tokens"
                   type="number" className="input text-white font-mono bg-[#0D1117] border-border/40 focus:border-accent text-center"
                   placeholder="e.g. 1000"
                   value={localConfig.model.maxTokens || ""}
@@ -281,63 +296,7 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* ── Section 2: Prompts ── */}
-        <div className="bg-card p-6 rounded-2xl border border-border shadow-sm hover:border-accent/40 transition">
-          <div className="flex items-center justify-between mb-6 border-b border-border/50 pb-3">
-            <div className="flex items-center gap-2 text-white">
-              <MessageSquareQuote className="text-accent" size={20} />
-              <h2 className="text-xl font-bold tracking-wide">Prompt Blueprints</h2>
-            </div>
-            <button 
-              onClick={() => {
-                const defaults = {
-                  testPlan: "testplan/universal",
-                  testCase: "testcase/universal",
-                  coverage: "coverage/analysis",
-                  codeGen: "codegen/selenium-java",
-                  apiScenario: "api/api-test-scenario",
-                  apiTestCase: "api/api-test-case"
-                };
-                setLocalConfig(prev => ({ ...prev, prompts: { ...prev.prompts, ...defaults } }));
-                showToast("Recommended prompts restored to selection", "success");
-              }}
-              className="px-3 py-1.5 text-xs font-semibold bg-white/5 border border-border rounded-lg text-textMuted hover:text-white transition"
-            >
-              Restore Recommended
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {["testPlan", "testCase", "coverage", "codeGen", "apiScenario", "apiTestCase"].map(key => {
-              const label = key === "apiScenario" ? "API Scenario" 
-                          : key === "apiTestCase" ? "API Test Case" 
-                          : key.replace(/([A-Z])/g, " $1").trim().replace("Test", "Test ");
-              
-              return (
-                <div key={key}>
-                  <label className="block text-[11px] uppercase tracking-widest text-textMuted font-bold mb-2">
-                    {label} Prompt
-                  </label>
-                  <select
-                    className="input font-mono text-xs w-full"
-                    value={localConfig.prompts[key] || ""}
-                    onChange={e => handleNestedChange("prompts", key, e.target.value)}
-                  >
-                    {!availablePrompts.includes(localConfig.prompts[key]) && localConfig.prompts[key] && (
-                       <option value={localConfig.prompts[key]}>{localConfig.prompts[key]}.md (Current)</option>
-                    )}
-                    {availablePrompts.length > 0 ? (
-                      availablePrompts.map(p => (
-                        <option key={p} value={p}>{p}.md</option>
-                      ))
-                    ) : (
-                      <option value="">No prompts available...</option>
-                    )}
-                  </select>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+
 
         {/* ── Section 3: Execution ── */}
         <div className="bg-card p-6 rounded-2xl border border-border shadow-sm hover:border-accent/40 transition">
@@ -354,8 +313,11 @@ export default function Settings() {
               <Toggle checked={localConfig.execution.enableRetry} onChange={e => handleNestedChange("execution", "enableRetry", e.target.checked)} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Max Retry Attempts</label>
-              <input type="number" className="input" value={localConfig.execution.maxRetries}
+              <label htmlFor="setting-max-retries" className="block text-sm font-medium text-gray-300 mb-1">Max Retry Attempts</label>
+              <input 
+                id="setting-max-retries"
+                name="max-retries"
+                type="number" className="input" value={localConfig.execution.maxRetries}
                 disabled={!localConfig.execution.enableRetry}
                 onChange={e => handleNestedChange("execution", "maxRetries", parseInt(e.target.value) || 1)} />
             </div>
@@ -391,15 +353,79 @@ export default function Settings() {
               <Toggle checked={localConfig.output.jsonValidation} onChange={e => handleNestedChange("output", "jsonValidation", e.target.checked)} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Default Case Status</label>
-              <select className="input" value={localConfig.output.defaultStatus}
-                onChange={e => handleNestedChange("output", "defaultStatus", e.target.value)}>
+              <label htmlFor="setting-case-status" className="block text-sm font-medium text-gray-300 mb-1">Default Case Status</label>
+              <select 
+                id="setting-case-status"
+                name="default-status"
+                className="input" value={localConfig.output.defaultStatus}
+                onChange={e => handleNestedChange("output", "defaultStatus", e.target.value)}
+              >
                 <option value="Draft">Draft</option>
                 <option value="Review">Ready for Review</option>
                 <option value="Approved">Approved</option>
               </select>
             </div>
           </div>
+        </div>
+
+        {/* ── Section: Jira Integration ── */}
+        <div className="bg-card p-6 rounded-2xl border border-border shadow-sm hover:border-accent/40 transition lg:col-span-2">
+          <div className="flex items-center gap-2 text-white mb-6 border-b border-border/50 pb-3">
+            <Kanban className="text-accent" size={20} />
+            <h2 className="text-xl font-bold tracking-wide">Jira Integration</h2>
+            <span className="ml-auto text-xs font-semibold px-2.5 py-1 rounded-full border bg-accent/10 border-accent/20 text-accent">
+              Atlassian Cloud
+            </span>
+          </div>
+          <p className="text-xs text-textMuted mb-5">
+            These credentials are used by the Jira Sync page to fetch issues. Leave all fields empty to use the backend <code className="font-mono bg-black/30 px-1 rounded">.env</code> defaults (<code className="font-mono bg-black/30 px-1 rounded">JIRA_BASE_URL</code>, <code className="font-mono bg-black/30 px-1 rounded">JIRA_EMAIL</code>, <code className="font-mono bg-black/30 px-1 rounded">JIRA_API_TOKEN</code>).
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Jira Instance URL</label>
+              <input
+                type="text"
+                className="input"
+                placeholder="https://yourorg.atlassian.net"
+                value={jiraCreds.url}
+                onChange={e => setJiraCreds(prev => ({ ...prev, url: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Account Email</label>
+              <input
+                type="email"
+                className="input"
+                placeholder="you@yourorg.com"
+                value={jiraCreds.email}
+                onChange={e => setJiraCreds(prev => ({ ...prev, email: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">API Token</label>
+              <div className="relative">
+                <input
+                  type={showJiraToken ? "text" : "password"}
+                  className="input pr-10"
+                  placeholder="ATATT3xFfGF0..."
+                  value={jiraCreds.token}
+                  onChange={e => setJiraCreds(prev => ({ ...prev, token: e.target.value }))}
+                />
+                <button
+                  onClick={() => setShowJiraToken(!showJiraToken)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted hover:text-white"
+                >
+                  {showJiraToken ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={saveJiraCreds}
+            className="btn px-6 py-2.5 flex items-center gap-2 text-sm shadow-lg shadow-accent/20"
+          >
+            <Save size={15} /> Save Jira Credentials
+          </button>
         </div>
 
         {/* ── Section 5: Storage & Performance ── */}

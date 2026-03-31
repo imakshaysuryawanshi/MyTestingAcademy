@@ -80,6 +80,9 @@
 :root[data-theme="light"] .border-blue-500\/20 { border-color: #93C5FD !important; }
 
 @layer base {
+  html {
+    font-size: 13px;
+  }
   body {
     @apply bg-background text-textMain antialiased;
   }

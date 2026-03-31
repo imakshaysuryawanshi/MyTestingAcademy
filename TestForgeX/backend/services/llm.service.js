@@ -1,8 +1,6 @@
-/**
- * 🔥 LLM Service — Main Engine
- * 
- * Central orchestrator for all AI inference across the TestForgeX platform.
- */
+import dotenv from 'dotenv';
+import path from 'path';
+dotenv.config({ path: path.join(process.cwd(), '.env'), override: true });
 
 import { ollamaProvider } from '../providers/ollama.provider.js';
 import { groqProvider }   from '../providers/groq.provider.js';
@@ -11,7 +9,6 @@ import { promptLoader }   from '../src/utils/promptLoader.js';
 import { scraperService } from './scraper.service.js';
 import { detectHallucination } from './validation.service.js';
 import fs from 'fs';
-import path from 'path';
 
 const PROVIDERS = {
   ollama: ollamaProvider,
@@ -21,13 +18,27 @@ const PROVIDERS = {
 
 const FALLBACK_CHAIN = ['groq', 'grok', 'ollama'];
 
+// Phase 25: Smart Routing — Auto-lock provider based on standard model IDs
+const MODEL_PROVIDER_MAP = {
+  'llama-3.3-70b-versatile': 'groq',
+  'llama3-8b-8192':           'groq',
+  'mixtral-8x7b-32768':       'groq',
+  'gemma2-9b-it':            'groq',
+  'grok-beta':               'grok',
+  'grok-2':                  'grok',
+  'grok-2-mini':             'grok',
+};
+
 class LLMService {
   constructor() {
+    // Initial guess, will be refined in _resolveProvider
     this.preferredProvider = process.env.LLM_PROVIDER || 'ollama';
   }
 
   async _resolveProvider() {
+    this.preferredProvider = process.env.LLM_PROVIDER || 'ollama';
     const preferred = PROVIDERS[this.preferredProvider];
+    // Check if preferred is available AND hasn't been globally disabled by exhaustion tracking
     if (preferred && await preferred.isAvailable()) return preferred;
 
     for (const name of FALLBACK_CHAIN) {
@@ -43,14 +54,23 @@ class LLMService {
 
   async run(promptAlias, variables = {}, overrideOptions = {}) {
     let provider = null;
+    let model = overrideOptions.id || process.env.DEFAULT_MODEL || 'llama3-8b-8192';
+
+    // Phase 25.1: Automatic Provider Discovery (Smart Routing)
+    // If the model is uniquely identified by a provider, use it even if not explicitly passed
+    let forcedProvider = overrideOptions.provider;
+    if (!forcedProvider && MODEL_PROVIDER_MAP[model]) {
+        forcedProvider = MODEL_PROVIDER_MAP[model];
+        console.log(`[LLMService] Auto-routing "${model}" to "${forcedProvider}" provider.`);
+    }
     
     // Phase 24: Runtime Provider Override
-    if (overrideOptions.provider && PROVIDERS[overrideOptions.provider]) {
-        provider = PROVIDERS[overrideOptions.provider];
+    if (forcedProvider && PROVIDERS[forcedProvider]) {
+        provider = PROVIDERS[forcedProvider];
         if (!(await provider.isAvailable(overrideOptions.ollamaUrl))) {
-            if (overrideOptions.provider === 'groq') throw new Error("Groq API key is missing. Please add GROQ_API_KEY to your backend .env file.");
-            if (overrideOptions.provider === 'grok') throw new Error("Grok / xAI API key is missing. Please add XAI_API_KEY to your backend .env file.");
-            throw new Error(`Requested AI provider '${overrideOptions.provider}' is unreachable on ${overrideOptions.ollamaUrl || 'default port'}. Please verify it is running.`);
+            if (forcedProvider === 'groq') throw new Error("Groq API key is missing. Please add GROQ_API_KEY to your backend .env file.");
+            if (forcedProvider === 'grok') throw new Error("Grok / xAI API key is missing. Please add XAI_API_KEY to your backend .env file.");
+            throw new Error(`Requested AI provider '${forcedProvider}' is unreachable. Please verify it is running.`);
         }
     } else {
         provider = await this._resolveProvider();
@@ -81,14 +101,46 @@ class LLMService {
       } catch (e) {}
     }
 
-    const model = overrideOptions.id || process.env.DEFAULT_MODEL || 'llama3-8b-8192';
     const temperature = overrideOptions.temperature ?? parseFloat(process.env.DEFAULT_TEMPERATURE || '0.3');
     const maxTokens   = overrideOptions.maxTokens   ?? parseInt(process.env.DEFAULT_MAX_TOKENS    || '700');
     // For Ollama custom local host
     const url         = overrideOptions.ollamaUrl   || undefined;
 
     console.log(`[LLMService] Generating via ${provider.name} | Model: ${model} | URL: ${url} | Prompt: ${promptAlias}`);
-    const raw = await provider.generate(compiledPrompt, model, { temperature, maxTokens, url });
+    
+    let raw;
+    try {
+      raw = await provider.generate(compiledPrompt, model, { temperature, maxTokens, url });
+    } catch (apiErr) {
+      // Phase: Resilience — Daisy-Chain Fallback (70b -> 8b -> Mixtral -> Alt Provider)
+      const isRateLimit = apiErr.message.includes('429') || apiErr.message.includes('Rate limit') || apiErr.message.includes('TPD') || apiErr.message.includes('TPM');
+      
+      if (provider.name === 'groq' && isRateLimit) {
+         if (model.includes('3.3-70b') || model.includes('70b')) {
+            model = 'llama-3.1-8b-instant';
+            console.warn(`[LLMService] Groq Tier 1 Exhausted. Retrying with ${model}...`);
+            try {
+               raw = await provider.generate(compiledPrompt, model, { temperature, maxTokens: 1000, url });
+            } catch {
+               model = 'mixtral-8x7b-32768';
+               console.warn(`[LLMService] Groq Tier 2 Exhausted. Retrying with ${model}...`);
+               raw = await provider.generate(compiledPrompt, model, { temperature, maxTokens: 1500, url });
+            }
+         } else {
+            // If already on a small model and still failing, try Alt Provider
+            console.warn(`[LLMService] Groq Completely Exhausted. Trying Grök fallback...`);
+            const alt = PROVIDERS.grok;
+            if (alt && await alt.isAvailable()) {
+                raw = await alt.generate(compiledPrompt, 'grok-beta', { temperature, maxTokens });
+            } else {
+                throw apiErr;
+            }
+         }
+      } else {
+         throw apiErr;
+      }
+    }
+
     const parsed = this._tryParseJSON(raw);
 
     // AI Anti-Hallucination Guardrail (Phase: Implementation)
@@ -107,17 +159,28 @@ class LLMService {
   _tryParseJSON(text) {
     if (!text || typeof text !== 'string') return text;
 
-    // Helper to fix truncated JSON by appending closing brackets
     const repair = (str) => {
         let s = str.trim();
+        // Remove trailing junk
+        const lastBrace = s.lastIndexOf('}');
+        const lastBracket = s.lastIndexOf(']');
+        const end = Math.max(lastBrace, lastBracket);
+        if (end !== -1 && end < s.length - 1) s = s.substring(0, end + 1);
+
         let openBraces = 0;
         let openBrackets = 0;
-        for (let char of s) {
-            if (char === '{') openBraces++;
-            if (char === '}') openBraces--;
-            if (char === '[') openBrackets++;
-            if (char === ']') openBrackets--;
+        let inString = false;
+        for (let i = 0; i < s.length; i++) {
+            const char = s[i];
+            if (char === '"' && (i === 0 || s[i-1] !== '\\')) inString = !inString;
+            if (!inString) {
+                if (char === '{') openBraces++;
+                if (char === '}') openBraces--;
+                if (char === '[') openBrackets++;
+                if (char === ']') openBrackets--;
+            }
         }
+        if (inString) s += '"';
         while (openBrackets > 0) { s += ']'; openBrackets--; }
         while (openBraces > 0) { s += '}'; openBraces--; }
         return s;
@@ -127,38 +190,36 @@ class LLMService {
     try { return JSON.parse(text); } catch {}
     try { return JSON.parse(repair(text)); } catch {}
 
-    // 2. Extract from ```json ... ``` fences
-    try {
-      const fenced = text.match(/```json\s*([\s\S]*?)```/i) ||
-                     text.match(/```\s*([\s\S]*?)```/i);
-      if (fenced) return JSON.parse((fenced[1] || fenced[0]).trim());
-    } catch {}
+    // 2. Extract from ```json ... ``` fences (even unclosed)
+    let cleanText = text;
+    if (text.includes('```')) {
+        const startMatch = text.match(/```(?:json)?\s*/i);
+        if (startMatch) {
+            const startIndex = startMatch.index + startMatch[0].length;
+            const endMatch   = text.indexOf('```', startIndex);
+            cleanText = endMatch !== -1 ? text.substring(startIndex, endMatch).trim() : text.substring(startIndex).trim();
+        }
+    }
+    try { return JSON.parse(cleanText); } catch {}
+    try { return JSON.parse(repair(cleanText)); } catch {}
 
-    // 3. Extract from anti-hallucination wrapper sections
-    // LLM wraps JSON in: ## Generated Output:\n\n{...}\n\n## Self-Validation
+    // 3. Last resort: find the outermost JSON object or array
     try {
-      const sectionMatch = text.match(/##\s*Generated Output[:\s]*([\s\S]*?)(?:##|$)/i);
-      if (sectionMatch) {
-        const inner = sectionMatch[1].trim();
-        const jsonBlock = inner.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-        if (jsonBlock) return JSON.parse(jsonBlock[0]);
-      }
-    } catch {}
-
-    // 4. Last resort: find the outermost JSON object or array
-    try {
-      const firstObj = text.indexOf('{');
-      const firstArr = text.indexOf('[');
+      const firstObj = cleanText.indexOf('{');
+      const firstArr = cleanText.indexOf('[');
       const start = (firstObj !== -1 && (firstArr === -1 || firstObj < firstArr)) ? firstObj : firstArr;
       
       if (start !== -1) {
-        const lastObj = text.lastIndexOf('}');
-        const lastArr = text.lastIndexOf(']');
+        const lastObj = cleanText.lastIndexOf('}');
+        const lastArr = cleanText.lastIndexOf(']');
         const end = Math.max(lastObj, lastArr);
         
-        if (end !== -1 && end > start) {
-          const potentialJson = text.substring(start, end + 1);
-          return JSON.parse(potentialJson);
+        if (end === -1 || end < start) {
+            try { return JSON.parse(repair(cleanText.substring(start))); } catch {}
+        } else {
+            const potentialJson = cleanText.substring(start, end + 1);
+            try { return JSON.parse(potentialJson); } catch {}
+            try { return JSON.parse(repair(potentialJson)); } catch {}
         }
       }
     } catch {}
@@ -175,7 +236,7 @@ class LLMService {
   }
 
   // ── Convenience Wrappers ──────────────────────────────────────────────────
-  async generateTestPlan(title, criteria = "") { 
+  async generateTestPlan(title, criteria = "", options = {}) { 
     let contextTitle = title;
     let contextCriteria = criteria;
 
@@ -201,8 +262,33 @@ class LLMService {
     return this.run('testplan/test-plan-generator', { TITLE: contextTitle, ACCEPTANCE_CRITERIA: contextCriteria }, options); 
   }
   
-  async generateTestCases(story, options = {}) { 
-    return this.run('testcase/testcase-generator', { INPUT_DATA: story }, options); 
+  async generateTestCases(story, options = {}) {
+    // Serialize story object into rich text the prompt can use effectively
+    let inputData;
+    if (typeof story === 'string') {
+      inputData = story;
+    } else {
+      const acLines = (Array.isArray(story.acceptance_criteria) ? story.acceptance_criteria : [])
+        .map((c, i) => `  ${i + 1}. ${typeof c === 'string' ? c : JSON.stringify(c)}`)
+        .join('\n');
+      inputData = `Title: ${story.title || 'Untitled Story'}
+Description: ${story.description || 'No description provided.'}
+Acceptance Criteria:
+${acLines || '  - None specified'}`;
+    }
+    return this.run('testcase/testcase-generator', { INPUT_DATA: inputData }, options); 
+  }
+
+  async generateJiraArtifacts(issueData, options = {}) {
+    const input = `
+ID: ${issueData.id}
+Title: ${issueData.title}
+Description: ${issueData.description}
+Acceptance Criteria: ${issueData.acceptanceCriteria}
+
+${issueData.additionalContext ? `ADDITIONAL CONTEXT / REQUIREMENTS:\n${issueData.additionalContext}` : ''}
+`;
+    return this.run('jira/qa-artifacts', { JIRA_INPUT: input }, options);
   }
   
   async generateUserStories(input, options = {}) { 
@@ -226,7 +312,7 @@ class LLMService {
       }
     }
 
-    return this.run('userstory/userstory-engine', { INPUT_DATA: context }); 
+    return this.run('userstory/userstory-engine', { INPUT_DATA: context }, options); 
   }
 
   async generateScenarios(story, options = {}) { 
@@ -292,19 +378,33 @@ class LLMService {
         const scrapedData = await scraperService.scrape(url);
         
         // If scraping returned 0 elements (blocked/timeout), pass URL directly to AI
-        const hasElements = scrapedData.elements && scrapedData.elements.length > 0;
-        const isBlocked = scrapedData.status >= 400 || (scrapedData.title === 'Blocked / Unavailable');
+        const isBlocked = scrapedData.status === 403 || 
+                          scrapedData.status === 401 || 
+                          (scrapedData.elements.length < 3 && scrapedData.status === 200 && (scrapedData.visible_text.toLowerCase().includes('challenge') || scrapedData.visible_text.toLowerCase().includes('captcha') || scrapedData.visible_text.toLowerCase().includes('blocked'))) ||
+                          (scrapedData.elements.length === 0);
 
         const contextInfo = isBlocked
-            ? `The scraper was blocked (Status: ${scrapedData.status}). Use only the page title "${scrapedData.title}" and the domain name to infer common e-commerce/SaaS features for this site.`
-            : hasElements 
+            ? `The scraper was blocked (Status: ${scrapedData.status}). Use only the page title "${scrapedData.title}" and the domain name to infer common e-commerce/SaaS features for this site. This site is likely a major platform like Amazon/VWO/Razorpay.`
+            : (scrapedData.elements.length > 0)
                 ? JSON.stringify(scrapedData.elements, null, 2)
-                : `No specific UI elements were found but scraping was successful. Infer common features for "${scrapedData.title}".`;
+                : `No specific UI elements were found but scraping was successful. Page Title: "${scrapedData.title}". Infer features based on this title.`;
 
-        const intelligence = await this.run('DOM Intelligence Layer/phase-web-scraping-dom', { 
-            URL: url,
-            UI_DATA: contextInfo 
-        }, options);
+        // Step 2: Apply Deep Intelligence (AI Logic)
+        let intelligence = null;
+        try {
+            intelligence = await this.run('DOM Intelligence Layer/phase-web-scraping-dom', { 
+                URL: url,
+                UI_DATA: contextInfo 
+            }, options);
+        } catch (intelErr) {
+            console.warn('[analyzeURL] Deep Intelligence Layer failed, falling back to basic analysis:', intelErr.message);
+            intelligence = {
+                app_type: isBlocked ? "Auto-Inferred" : "Legacy Application",
+                features: ["Primary functionality mapping"],
+                flows: ["User journey exploration"],
+                raw_summary: `Deep analysis timed out. Page Title: ${scrapedData.title || url}`
+            };
+        }
         
         let finalIntel = intelligence;
         if (typeof intelligence === 'string') {
@@ -329,7 +429,7 @@ class LLMService {
             intelligence: finalIntel || {}
         };
     } catch (err) {
-        console.error('[analyzeURL] Inference error:', err.message);
+        console.error('[analyzeURL] Global analysis failure:', err.message);
         return { 
           url, 
           elements: [], 

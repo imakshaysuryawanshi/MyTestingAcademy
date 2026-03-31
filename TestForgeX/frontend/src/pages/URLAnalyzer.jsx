@@ -2,10 +2,10 @@ import React, { useState } from "react";
 import { Link2, LayoutTemplate, Loader2, MousePointerClick, Type, Link as LinkIcon, Sparkles, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
-import { useAppStore } from "../store/AppContext";
+import { useAppStore } from "../store/useAppStore";
 
 export default function URLAnalyzer() {
-    const { showToast, setStories } = useAppStore();
+    const { showToast, addStories, setScrapedElements } = useAppStore();
     const navigate = useNavigate();
 
     const [url, setUrl] = useState("");
@@ -13,20 +13,47 @@ export default function URLAnalyzer() {
     const [generating, setGenerating] = useState(false);
     const [result, setResult] = useState(null);
 
+    // ── Auto-Reset Logic ──
+    React.useEffect(() => {
+        if (!url && result) {
+            setResult(null);
+            setScrapedElements([]);
+        }
+    }, [url, result, setScrapedElements]);
+
     const handleAnalyze = async () => {
-        if (!url) {
-            showToast("Please enter a valid URL.", "error");
+        let normalizedUrl = url.trim();
+        if (!normalizedUrl) return;
+        
+        // Auto-prepend protocol if missing (Fix for redbus.in etc)
+        if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+            normalizedUrl = `https://${normalizedUrl}`;
+            setUrl(normalizedUrl);
+        }
+
+        // Standard URL validation regex
+        const urlPattern = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/;
+        
+        if (!urlPattern.test(normalizedUrl)) {
+            showToast("Please enter a valid application URL.", "error");
             return;
         }
 
         setLoading(true);
         setResult(null);
         try {
-            const res = await api.analyzeURL(url);
+            const res = await api.analyzeURL(normalizedUrl);
             setResult(res.data);
+            setScrapedElements(res.data.elements || []);
             showToast(`Analyzed — found ${res.data.elements.length} UI elements`, "success");
         } catch (error) {
-            showToast("Failed to analyze URL", "error");
+            console.error("URL Analysis Error:", error);
+            const msg = error.message || "Unknown error during analysis";
+            if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+                showToast("Cannot connect to backend. Please verify the server is running on port 5000.", "error");
+            } else {
+                showToast(`Failed: ${msg}`, "error");
+            }
         } finally {
             setLoading(false);
         }
@@ -42,12 +69,7 @@ export default function URLAnalyzer() {
             const res = await api.generateUserStories("url", context);
 
             if (res.success && res.data?.user_stories?.length > 0) {
-                setStories(prev => {
-                    // Deduplicate by title
-                    const existing = new Set(prev.map(s => s.title));
-                    const incoming = res.data.user_stories.filter(s => !existing.has(s.title));
-                    return [...prev, ...incoming];
-                });
+                addStories(res.data.user_stories);
                 showToast(`✓ ${res.data.user_stories.length} User Stories generated!`, "success");
                 // Navigate to the User Stories page after a brief pause
                 setTimeout(() => navigate("/stories"), 800);
@@ -85,23 +107,31 @@ export default function URLAnalyzer() {
             <div className="bg-card p-8 rounded-2xl border border-border shadow-lg mb-8">
                 <p className="text-textMuted mb-6">Enter a web application URL and our AI will parse the DOM and vision metadata to extract actionable UI elements for testing.</p>
 
-                <div className="flex flex-col md:flex-row gap-4">
+                <form 
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        handleAnalyze();
+                    }}
+                    className="flex flex-col md:flex-row gap-4"
+                >
+                    <label htmlFor="analyze-url" className="sr-only">Application URL to Analyze</label>
                     <input
+                        id="analyze-url"
+                        name="analyze-url"
                         className="input flex-1"
                         placeholder="Enter Full Web App URL (e.g. https://google.com)"
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
                     />
                     <button
-                        onClick={handleAnalyze}
+                        type="submit"
                         disabled={loading}
                         className="btn px-8 text-lg font-semibold shadow-lg shadow-accent/20 flex items-center justify-center gap-2"
                     >
                         {loading ? <Loader2 className="animate-spin" size={18} /> : <ExternalLink size={18} />}
                         {loading ? "Analyzing…" : "Analyze"}
                     </button>
-                </div>
+                </form>
             </div>
 
             {result && (

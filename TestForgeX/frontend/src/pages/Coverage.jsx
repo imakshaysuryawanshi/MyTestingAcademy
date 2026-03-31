@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ShieldCheck, Activity, Target, AlertTriangle, Loader2, Wifi, Code2, CheckCircle2, XCircle } from "lucide-react";
 import { api } from "../services/api";
-import { useAppStore } from "../store/AppContext";
+import { useAppStore } from "../store/useAppStore";
 
 function ApiCoverageCard({ items, type }) {
   const isScenarios = type === "scenarios";

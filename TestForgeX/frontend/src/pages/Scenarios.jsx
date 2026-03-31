@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { FlaskConical, Loader2, Copy, Save, ChevronDown, ChevronUp, Zap, Download } from "lucide-react";
-import { useAppStore } from "../store/AppContext";
+import { useAppStore } from "../store/useAppStore";
 import { api } from "../services/api";
 import { useNavigate } from "react-router-dom";
 
 export default function Scenarios() {
-  const { showToast, setTestCases, scenarios, setScenarios } = useAppStore();
+  const { showToast, addTestCases, scenarios, setScenarios, addScenarios } = useAppStore();
   const navigate = useNavigate();
 
   const [loadingIdx, setLoadingIdx] = useState(null);
@@ -17,8 +17,8 @@ export default function Scenarios() {
       const saved = localStorage.getItem("tfx_scenarios");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0 && scenarios.length === 0) {
-          setScenarios(parsed);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          addScenarios(parsed);
         }
       }
     } catch (err) {
@@ -38,7 +38,7 @@ export default function Scenarios() {
           cases = cases?.test_cases || cases?.cases || cases?.result || (cases ? [cases] : []);
         }
         if (cases.length > 0) {
-          setTestCases(prev => [...prev, ...cases]);
+          addTestCases(cases);
           showToast(`✓ ${cases.length} Test Cases generated!`, "success");
           setTimeout(() => navigate("/testcases"), 800);
         } else {

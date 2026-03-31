@@ -1,25 +1,19 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { AppContext } from './AppContext';
 
-// ─── Context ──────────────────────────────────────────────────────────────────
-export const AppContext = createContext();
-
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-export const useAppStore = () => useContext(AppContext);
-
-// ─── Provider ─────────────────────────────────────────────────────────────────
 export function AppProvider({ children }) {
   const [testCases, setTestCases] = useState(() => {
     try { const saved = localStorage.getItem('tfx_testcases'); const p = saved ? JSON.parse(saved) : []; return Array.isArray(p) ? p : []; } catch { return []; }
   });
-
+  
   const [testPlans, setTestPlans] = useState(() => {
     try { const saved = localStorage.getItem('tfx_testplans'); const p = saved ? JSON.parse(saved) : []; return Array.isArray(p) ? p : []; } catch { return []; }
   });
-
+  
   const [stories, setStories] = useState(() => {
     try { const saved = localStorage.getItem('tfx_stories'); const p = saved ? JSON.parse(saved) : []; return Array.isArray(p) ? p : []; } catch { return []; }
   });
-
+  
   const [savedScripts, setSavedScripts] = useState(() => {
     try { const saved = localStorage.getItem('tfx_saved_scripts'); const p = saved ? JSON.parse(saved) : []; return Array.isArray(p) ? p : []; } catch { return []; }
   });
@@ -35,11 +29,11 @@ export function AppProvider({ children }) {
   const [apiTestCases, setApiTestCases] = useState(() => {
     try { const saved = localStorage.getItem('tfx_api_testcases'); const p = saved ? JSON.parse(saved) : []; return Array.isArray(p) ? p : []; } catch { return []; }
   });
-
+  
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('tfx_theme') || 'dark';
   });
-
+  
   const [scrapedElements, setScrapedElements] = useState(() => {
     try { const saved = localStorage.getItem('tfx_scraped_elements'); return saved ? JSON.parse(saved) : []; } catch { return []; }
   });
@@ -55,6 +49,7 @@ export function AppProvider({ children }) {
     try {
       const saved = localStorage.getItem('tfx_settings');
       if (!saved) return defaultSettings;
+      
       const parsed = JSON.parse(saved);
       if (parsed.model && (parsed.model.id === "llama3:8b-instruct-q4_0" || parsed.model.id === "llama3-8b-8192")) {
         parsed.model.id = "llama3:latest";
@@ -78,77 +73,46 @@ export function AppProvider({ children }) {
       return defaultSettings;
     }
   });
-
+  
+  // System Notifications (Toast)
   const [toast, setToast] = useState(null);
 
-  // ─── Smart Adders with Deduplication ──────────────────────────────────────────
-  const addStories = (newItems) => {
-    if (!Array.isArray(newItems)) return;
-    setStories(prev => {
-      const existing = new Set(prev.map(s => s.title));
-      const filtered = newItems.filter(s => s.title && !existing.has(s.title));
-      return [...filtered, ...prev];
-    });
-  };
+  useEffect(() => {
+    localStorage.setItem('tfx_testcases', JSON.stringify(testCases));
+  }, [testCases]);
 
-  const addTestPlans = (newItems) => {
-    if (!Array.isArray(newItems)) return;
-    setTestPlans(prev => {
-      const existing = new Set(prev.map(p => p.objective || p.title));
-      const filtered = newItems.filter(p => (p.objective || p.title) && !existing.has(p.objective || p.title));
-      return [...filtered, ...prev];
-    });
-  };
+  useEffect(() => {
+    localStorage.setItem('tfx_testplans', JSON.stringify(testPlans));
+  }, [testPlans]);
 
-  const addScenarios = (newItems) => {
-    if (!Array.isArray(newItems)) return;
-    setScenarios(prev => {
-      const existing = new Set(prev.map(s => s.title));
-      const filtered = newItems.filter(s => s.title && !existing.has(s.title));
-      return [...filtered, ...prev];
-    });
-  };
+  useEffect(() => {
+    localStorage.setItem('tfx_stories', JSON.stringify(stories));
+  }, [stories]);
 
-  const addTestCases = (newItems) => {
-    if (!Array.isArray(newItems)) return;
-    setTestCases(prev => {
-      // Normalize comparison keys
-      const existing = new Set(prev.map(c => (c.Title || c.title || "").trim()));
-      const filtered = newItems.filter(c => {
-        const t = (c.Title || c.title || "").trim();
-        return t && !existing.has(t);
-      });
-      return [...prev, ...filtered];
-    });
-  };
+  useEffect(() => {
+    localStorage.setItem('tfx_settings', JSON.stringify(settings));
+  }, [settings]);
 
-  const addApiScenarios = (newItems) => {
-    if (!Array.isArray(newItems)) return;
-    setApiScenarios(prev => {
-      const existing = new Set(prev.map(s => s.title));
-      const filtered = newItems.filter(s => s.title && !existing.has(s.title));
-      return [...filtered, ...prev];
-    });
-  };
+  useEffect(() => {
+    localStorage.setItem('tfx_saved_scripts', JSON.stringify(savedScripts));
+  }, [savedScripts]);
 
-  const addApiTestCases = (newItems) => {
-    if (!Array.isArray(newItems)) return;
-    setApiTestCases(prev => {
-      const existing = new Set(prev.map(tc => tc.title));
-      const filtered = newItems.filter(tc => tc.title && !existing.has(tc.title));
-      return [...prev, ...filtered];
-    });
-  };
+  useEffect(() => {
+    localStorage.setItem('tfx_scenarios', JSON.stringify(scenarios));
+  }, [scenarios]);
 
-  useEffect(() => { localStorage.setItem('tfx_testcases', JSON.stringify(testCases)); }, [testCases]);
-  useEffect(() => { localStorage.setItem('tfx_testplans', JSON.stringify(testPlans)); }, [testPlans]);
-  useEffect(() => { localStorage.setItem('tfx_stories', JSON.stringify(stories)); }, [stories]);
-  useEffect(() => { localStorage.setItem('tfx_settings', JSON.stringify(settings)); }, [settings]);
-  useEffect(() => { localStorage.setItem('tfx_saved_scripts', JSON.stringify(savedScripts)); }, [savedScripts]);
-  useEffect(() => { localStorage.setItem('tfx_scenarios', JSON.stringify(scenarios)); }, [scenarios]);
-  useEffect(() => { localStorage.setItem('tfx_api_scenarios', JSON.stringify(apiScenarios)); }, [apiScenarios]);
-  useEffect(() => { localStorage.setItem('tfx_api_testcases', JSON.stringify(apiTestCases)); }, [apiTestCases]);
-  useEffect(() => { localStorage.setItem('tfx_scraped_elements', JSON.stringify(scrapedElements)); }, [scrapedElements]);
+  useEffect(() => {
+    localStorage.setItem('tfx_api_scenarios', JSON.stringify(apiScenarios));
+  }, [apiScenarios]);
+
+  useEffect(() => {
+    localStorage.setItem('tfx_api_testcases', JSON.stringify(apiTestCases));
+  }, [apiTestCases]);
+  
+  useEffect(() => {
+    localStorage.setItem('tfx_scraped_elements', JSON.stringify(scrapedElements));
+  }, [scrapedElements]);
+
   useEffect(() => {
     localStorage.setItem('tfx_theme', theme);
     document.documentElement.setAttribute('data-theme', theme);
@@ -161,12 +125,12 @@ export function AppProvider({ children }) {
 
   return (
     <AppContext.Provider value={{
-      testCases, setTestCases, addTestCases,
-      testPlans, setTestPlans, addTestPlans,
-      stories, setStories, addStories,
-      scenarios, setScenarios, addScenarios,
-      apiScenarios, setApiScenarios, addApiScenarios,
-      apiTestCases, setApiTestCases, addApiTestCases,
+      testCases, setTestCases,
+      testPlans, setTestPlans,
+      stories, setStories,
+      scenarios, setScenarios,
+      apiScenarios, setApiScenarios,
+      apiTestCases, setApiTestCases,
       scrapedElements, setScrapedElements,
       savedScripts, setSavedScripts,
       settings, setSettings,
@@ -174,9 +138,10 @@ export function AppProvider({ children }) {
       toast, showToast
     }}>
       {children}
+      {/* Toast Notification renderer */}
       {toast && (
         <div className={`fixed bottom-6 right-6 px-6 py-3 rounded-xl shadow-2xl border flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50 text-white font-medium ${
-          toast.type === 'error' ? 'bg-red-500/10 border-red-500 text-red-500' :
+          toast.type === 'error' ? 'bg-red-500/10 border-red-500 text-red-500' : 
           toast.type === 'info' ? 'bg-blue-500/10 border-blue-500 text-blue-400' :
           'bg-accent/10 border-accent text-accent'
         }`}>

@@ -5,31 +5,9 @@ import {
   Database, Eye, Sparkles, ChevronRight, TerminalSquare, Save, History, Download
 } from "lucide-react";
 import { api } from "../services/api";
-import { useAppStore } from "../store/AppContext";
+import { useAppStore } from "../store/useAppStore";
 
-// ── Element Extraction: Parse stored elements from localStorage (URL Analyzer output) ──
-function useAnalyzedElements() {
-  const [elements, setElements] = useState([]);
-  
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("tfx_analyzed_elements");
-      setElements(raw ? JSON.parse(raw) : []);
-    } catch {
-      setElements([]);
-    }
-    
-    const handleStorage = (e) => {
-      if (e.key === "tfx_analyzed_elements") {
-        try { setElements(e.newValue ? JSON.parse(e.newValue) : []); } catch {}
-      }
-    };
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, []);
-
-  return elements;
-}
+// ── Component ──
 
 // ── Resilient key reader (handles both old lowercase & new standardized keys) ──
 const tcGet = (tc, ...keys) => {
@@ -41,8 +19,8 @@ const tcGet = (tc, ...keys) => {
 };
 
 export default function CodeGen() {
-  const { testCases = [], showToast, savedScripts, setSavedScripts } = useAppStore();
-  const analyzedElements = useAnalyzedElements();
+  const { testCases = [], showToast, savedScripts, setSavedScripts, scrapedElements, setScrapedElements } = useAppStore();
+  const analyzedElements = scrapedElements || [];
 
   const [selectedTcId, setSelectedTcId]   = useState("");
   const [manualUrl, setManualUrl]          = useState("");
@@ -51,6 +29,7 @@ export default function CodeGen() {
   const [useManual, setUseManual]          = useState(false);
   const [useElements, setUseElements]      = useState(true);
   const [loading, setLoading]              = useState(false);
+  const [analyzing, setAnalyzing]          = useState(false);
   const [codeOutput, setCodeOutput]        = useState("");
 
   // Normalize each test case to a consistent shape for display
@@ -58,15 +37,26 @@ export default function CodeGen() {
     _raw: tc,
     id:    tcGet(tc, "ID", "TID", "id", "tid", "case_id") || `TC-${String(idx+1).padStart(3,"0")}`,
     title: tcGet(tc, "Description", "description", "Title", "title", "summary") || "Untitled Test",
-    steps: (() => { const s = tcGet(tc, "Steps", "steps", "Actions", "actions"); return Array.isArray(s) ? s : (s ? String(s).split(/\||→/).map(x=>x.trim()).filter(Boolean) : []); })(),
-    url:   tcGet(tc, "url", "URL", "target_url"),
+    steps: (() => { 
+      const s = tcGet(tc, "Steps", "steps", "Actions", "actions", "stepsArr"); 
+      return Array.isArray(s) ? s : (s ? String(s).split(/\||→/).map(x=>x.trim()).filter(Boolean) : []); 
+    })(),
+    url:   tcGet(tc, "url", "URL", "target_url") || tcGet(tc.test_plan || {}, "url", "URL"),
   }));
 
   // Selected test case
   const selectedTc = normalizedTCs.find(tc => tc.id === selectedTcId);
 
   // Derive effective values
-  const effectiveUrl   = useManual ? manualUrl   : (selectedTc?.url   || manualUrl);
+  const effectiveUrl   = (useManual ? manualUrl : (selectedTc?.url || manualUrl)) || "";
+
+  // ── Auto-Reset Logic ──
+  useEffect(() => {
+    if (!effectiveUrl && analyzedElements.length > 0) {
+      setScrapedElements([]);
+    }
+  }, [effectiveUrl, analyzedElements.length, setScrapedElements]);
+
   const effectiveTitle = useManual ? manualTitle : (selectedTc?.title || "");
   const effectiveSteps = useManual
     ? (manualSteps ? manualSteps.split("\n").filter(Boolean) : [])
@@ -74,9 +64,28 @@ export default function CodeGen() {
 
   const payloadToInject = {
     title:    effectiveTitle || "Untitled Test",
-    url:      effectiveUrl   || "https://example.com",
+    url:      effectiveUrl,
     steps:    effectiveSteps,
     elements: useElements ? analyzedElements : []
+  };
+
+  const handleAnalyzeUrl = async () => {
+    if (!effectiveUrl) {
+      showToast("Please provide a URL to analyze.", "error");
+      return;
+    }
+    setAnalyzing(true);
+    try {
+      const res = await api.analyzeURL(effectiveUrl);
+      if (res.data?.elements) {
+        setScrapedElements(res.data.elements);
+        showToast(`✓ Found ${res.data.elements.length} locator mappings for this URL.`, "success");
+      }
+    } catch (err) {
+      showToast("Failed to fetch locator mappings.", "error");
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const handleGenerate = async () => {
@@ -96,8 +105,20 @@ export default function CodeGen() {
     setLoading(true);
     try {
       const res = await api.generateCode(payloadToInject);
-      setCodeOutput(res.data || res.content || res.generated_code || "No code generated.");
-      showToast(`✓ Automation synthesized. ${payloadToInject.elements.length} mapped locators injected.`, "success");
+      const code = res.data || res.content || res.generated_code || "No code generated.";
+      setCodeOutput(code);
+      
+      // Auto-save to history
+      if (code && code !== "No code generated.") {
+        const historyItem = {
+          id: Date.now().toString(),
+          title: effectiveTitle || "Untitled Script",
+          code: code,
+          timestamp: new Date().toISOString()
+        };
+        setSavedScripts(prev => [historyItem, ...prev]);
+        showToast(`✓ Automation synthesized and saved to history.`, "success");
+      }
     } catch (err) {
       showToast("Code Generation failed. Check backend logs.", "error");
       console.error(err);
@@ -222,23 +243,31 @@ export default function CodeGen() {
                         
                         <div>
                           <p className="text-[11px] text-textMuted font-bold uppercase tracking-wider mb-1">Target URL <span className="text-accent">*</span></p>
-                          {selectedTc?.url ? (
-                            <div className="flex items-center gap-2 text-sm text-accent bg-accent/5 py-1.5 px-3 rounded-md border border-accent/20 inline-block truncate max-w-full">
-                              <Link2 size={12} className="inline mr-1" /> {selectedTc.url}
+                          <div className="flex gap-2 isolate relative group/url">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none group-focus-within/url:text-accent font-medium">
+                              <Link2 size={14} className="text-gray-500 transition-colors duration-300" />
                             </div>
-                          ) : (
-                            <div className="flex gap-2 isolate relative group/url">
-                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none group-focus-within/url:text-accent font-medium">
-                                <Link2 size={14} className="text-gray-500 transition-colors duration-300" />
-                              </div>
-                              <input
-                                className="input h-10 text-sm pl-9 w-full bg-black/40 border-dashed border-gray-600 focus:border-solid focus:border-accent transition-all duration-300 shadow-inner"
-                                placeholder="Override or provide missing URL"
-                                value={manualUrl}
-                                onChange={e => setManualUrl(e.target.value)}
-                              />
-                            </div>
-                          )}
+                            <input
+                              className={`input h-10 text-sm pl-9 pr-24 w-full bg-black/40 transition-all duration-300 shadow-inner ${selectedTc?.url ? 'border-border/50 text-accent' : 'border-dashed border-gray-600 focus:border-solid focus:border-accent'}`}
+                              placeholder="Target URL for analysis"
+                              value={useManual ? manualUrl : (selectedTc?.url || manualUrl)}
+                              onChange={e => {
+                                if (useManual) setManualUrl(e.target.value);
+                                else if (!selectedTc?.url) setManualUrl(e.target.value);
+                                // if there is a selectedTc.url, we just show it, but user might want to override?
+                                // let's allow override by typing in this box if they want
+                                setManualUrl(e.target.value);
+                              }}
+                            />
+                            <button 
+                              onClick={handleAnalyzeUrl}
+                              disabled={analyzing || !effectiveUrl}
+                              className="absolute right-1 top-1 h-8 px-3 bg-accent/10 border border-accent/20 rounded-lg text-[10px] font-bold text-accent hover:bg-accent/20 disabled:opacity-30 transition-all flex items-center gap-1.5"
+                            >
+                              {analyzing ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                              {analyzing ? "FETCHING..." : "ANALYZE"}
+                            </button>
+                          </div>
                         </div>
                         
                         <div>
@@ -276,12 +305,22 @@ export default function CodeGen() {
                     <label className="block text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider flex items-center gap-1.5">
                       <Link2 size={14}/> Base URL
                     </label>
-                    <input 
-                      className="input w-full bg-[#0E131A] focus:border-accent transition-all duration-300 h-11 font-mono text-sm text-accent shadow-inner" 
-                      placeholder="https://app.example.com" 
-                      value={manualUrl} 
-                      onChange={e => setManualUrl(e.target.value)} 
-                    />
+                    <div className="relative group/url">
+                      <input 
+                        className="input w-full bg-[#0E131A] focus:border-accent transition-all duration-300 h-11 pr-24 font-mono text-sm text-accent shadow-inner" 
+                        placeholder="https://app.example.com" 
+                        value={manualUrl} 
+                        onChange={e => setManualUrl(e.target.value)} 
+                      />
+                      <button 
+                        onClick={handleAnalyzeUrl}
+                        disabled={analyzing || !manualUrl}
+                        className="absolute right-1.5 top-1.5 h-8 px-3 bg-accent/10 border border-accent/20 rounded-lg text-[10px] font-bold text-accent hover:bg-accent/20 disabled:opacity-30 transition-all flex items-center gap-1.5"
+                      >
+                        {analyzing ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                        {analyzing ? "FETCHING..." : "ANALYZE"}
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">

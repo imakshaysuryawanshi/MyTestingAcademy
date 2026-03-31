@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
-import { useAppStore } from "../store/AppContext";
+import { useAppStore } from "../store/useAppStore";
 
 // ─── Story Card action button ─────────────────────────────────────────────────
 function ActionButton({ onClick, loading, icon: Icon, label, variant = "default" }) {
@@ -31,7 +31,7 @@ function ActionButton({ onClick, loading, icon: Icon, label, variant = "default"
 
 // ─── Individual story card (Phase 16 + 17 + 18) ───────────────────────────────
 function StoryCard({ story, onRegenerate }) {
-  const { setTestCases, setTestPlans, showToast } = useAppStore();
+  const { addTestCases, addTestPlans, showToast } = useAppStore();
   const navigate = useNavigate();
   const [loadingAction, setLoadingAction] = useState(null); // 'plan'|'scenarios'|'cases'|'adv'|'regen'|'copy'
   const [expanded, setExpanded] = useState(true);
@@ -44,12 +44,9 @@ function StoryCard({ story, onRegenerate }) {
   };
 
   const handleTestPlan = () => withLoading("plan", async () => {
-    const res = await api.generateTestPlan({ 
-      title: `${story.title} — ${story.description}`, 
-      criteria: (story.acceptance_criteria || []).join('\n') 
-    });
+    const res = await api.generateTestPlan(story.title, (story.acceptance_criteria || []).join('\n'));
     if (res.success) {
-      setTestPlans(prev => [...prev, res.data]);
+      addTestPlans([res.data]);
       showToast("✓ Test Plan generated!", "success");
       setTimeout(() => navigate("/testplans"), 800);
     }
@@ -65,9 +62,18 @@ function StoryCard({ story, onRegenerate }) {
   });
 
   const handleGenerateCases = () => withLoading("cases", async () => {
-    // Compact Context for higher speed
-    const context = `STORY: ${story.title} | DESC: ${story.description} | AC: ${(story.acceptance_criteria || []).join('; ')}`;
-    const res = await api.generateTestCases(context);
+    // Send the full rich structured story — NOT a compressed one-liner
+    // The prompt uses {{INPUT_DATA}} which needs full context to generate meaningful test cases
+    const structuredStory = {
+      title: story.title,
+      description: story.description,
+      acceptance_criteria: (story.acceptance_criteria || []).map((c, i) => {
+        if (typeof c === 'string') return c;
+        if (c.criteria) return `${c.scenario ? c.scenario + ': ' : ''}${c.criteria}`;
+        return Object.entries(c).map(([k,v]) => `${k}: ${v}`).join(' | ');
+      }),
+    };
+    const res = await api.generateTestCases(structuredStory);
     if (res.success) {
       // Ensure we always get a flat array regardless of AI response shape
       let cases = res.data;
@@ -78,7 +84,7 @@ function StoryCard({ story, onRegenerate }) {
         showToast("AI returned 0 test cases. Try again.", "error");
         return;
       }
-      setTestCases(prev => [...prev, ...cases]);
+      addTestCases(cases);
       showToast(`✓ ${cases.length} Test Cases generated!`, "success");
       setTimeout(() => navigate("/testcases"), 800);
     }
@@ -153,27 +159,31 @@ function StoryCard({ story, onRegenerate }) {
 
 // ─── Main UserStories Page ────────────────────────────────────────────────────
 export default function UserStories() {
-  const { stories, setStories, showToast } = useAppStore();
+  const { stories, setStories, addStories, addTestCases, showToast } = useAppStore();
   const [sourceType, setSourceType] = useState("url");
   const [inputData, setInputData] = useState("");
   const [loading, setLoading] = useState(false);
   const handleGenerate = async () => {
-    if (!inputData.trim()) {
-      showToast("Please provide source data.", "error");
-      return;
+    let finalInput = inputData.trim();
+    if (sourceType === 'url') {
+      if (!finalInput.startsWith('http://') && !finalInput.startsWith('https://')) {
+        finalInput = `https://${finalInput}`;
+        setInputData(finalInput);
+      }
     }
+
     setLoading(true);
     try {
-      const res = await api.generateUserStories(sourceType, inputData);
-      const newStories = res.data.user_stories || [];
-      // persist to global context 
-      setStories(prev => {
-        const existing = new Set(prev.map(s => s.title));
-        return [...newStories.filter(s => !existing.has(s.title)), ...prev];
-      });
+      const res = await api.generateUserStories(sourceType, finalInput);
+      const newStories = (res.data.user_stories || []).map(s => ({
+        ...s,
+        source: 'gen',
+        _generatedAt: new Date().toISOString()
+      }));
+      addStories(newStories);
       showToast(`✓ ${newStories.length} User Stories generated!`, "success");
-    } catch {
-      showToast("Failed to generate User Stories", "error");
+    } catch (err) {
+      showToast(`Failed: ${err.message || "Generation error"}`, "error");
     } finally {
       setLoading(false);
     }
@@ -265,6 +275,8 @@ export default function UserStories() {
           <div className="flex flex-col md:flex-row gap-4">
             {sourceType === "url" ? (
               <input
+                id="url-input"
+                name="url-input"
                 className="input flex-1 h-12"
                 placeholder="https://app.example.com"
                 value={inputData}

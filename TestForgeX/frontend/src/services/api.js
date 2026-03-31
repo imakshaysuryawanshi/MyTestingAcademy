@@ -1,463 +1,314 @@
 /**
- * Mock API Layer (Phase 11: API Contract & Phase 13: AI Optimization)
- * Integrates Retry Mechanisms, JSON structural validation (Phase 10: Reliability)
+ * Global API Service (Phase 26: Deduplication & Robustness)
+ * Centralizes all AI interactions with auto-retries, timeouts, and JSON structural repair.
  */
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
 
-// Aggressively extract and parse JSON from noisy AI text (Phase 10: Reliability)
+// Aggressively extract and parse JSON from noisy AI text
 const safeParse = (data) => {
   if (typeof data !== 'string') return data;
   
-  const text = data.trim();
+  let text = data.trim();
   if (!text) return null;
 
-  // 1. Direct parse attempt
+  const repairJson = (str) => {
+    let s = str.trim();
+    const lastBrace = s.lastIndexOf('}');
+    const lastBracket = s.lastIndexOf(']');
+    const end = Math.max(lastBrace, lastBracket);
+    if (end !== -1 && end < s.length - 1) s = s.substring(0, end + 1);
+
+    let openBraces = 0, openBrackets = 0, inString = false;
+    for (let i = 0; i < s.length; i++) {
+        const char = s[i];
+        if (char === '"' && (i === 0 || s[i-1] !== '\\')) inString = !inString;
+        if (!inString) {
+            if (char === '{') openBraces++;
+            if (char === '}') openBraces--;
+            if (char === '[') openBrackets++;
+            if (char === ']') openBrackets--;
+        }
+    }
+    if (inString) s += '"';
+    while (openBrackets > 0) { s += ']'; openBrackets--; }
+    while (openBraces > 0) { s += '}'; openBraces--; }
+    return s;
+  };
+
   try { return JSON.parse(text); } catch {}
 
-  // 2. Strip common markdown fences
-  let clean = text.replace(/```json\s*|```\s*/gi, '').replace(/```$/g, '').trim();
-  try { return JSON.parse(clean); } catch {}
+  let cleanText = text;
+  if (text.includes('```')) {
+      const startMatch = text.match(/```(?:json)?\s*/i);
+      if (startMatch) {
+          const startIndex = startMatch.index + startMatch[0].length;
+          const endMatch = text.indexOf('```', startIndex);
+          cleanText = endMatch !== -1 ? text.substring(startIndex, endMatch).trim() : text.substring(startIndex).trim();
+      }
+  }
+  
+  try { return JSON.parse(cleanText); } catch {}
+  try { return JSON.parse(repairJson(cleanText)); } catch {}
 
-  // 3. Find outermost { or [
   try {
-    const firstObj = text.indexOf('{');
-    const firstArr = text.indexOf('[');
+    const firstObj = cleanText.indexOf('{');
+    const firstArr = cleanText.indexOf('[');
     const start = (firstObj !== -1 && (firstArr === -1 || firstObj < firstArr)) ? firstObj : firstArr;
-    
     if (start !== -1) {
-      const lastObj = text.lastIndexOf('}');
-      const lastArr = text.lastIndexOf(']');
+      const lastObj = cleanText.lastIndexOf('}');
+      const lastArr = cleanText.lastIndexOf(']');
       const end = Math.max(lastObj, lastArr);
-      
-      if (end !== -1 && end > start) {
-        const potentialJson = text.substring(start, end + 1);
-        return JSON.parse(potentialJson);
+      if (end === -1 || end < start) {
+          try { return JSON.parse(repairJson(cleanText.substring(start))); } catch {}
+      } else {
+          const potentialJson = cleanText.substring(start, end + 1);
+          try { return JSON.parse(potentialJson); } catch {}
+          try { return JSON.parse(repairJson(potentialJson)); } catch {}
       }
     }
   } catch {}
-
-  return data; // Final fallback: raw text
+  return data; 
 };
 
-// Phase 24 Helper: Get current settings from localStorage to pass to backend
+/** Standard artifact extractor */
+const extractArtifactList = (data, keys = []) => {
+    if (!data) return [];
+    let obj = typeof data === 'string' ? safeParse(data) : data;
+    if (!obj) return [];
+
+    if (typeof obj === 'string') {
+        const match = obj.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+        if (match) {
+            try {
+                const repaired = safeParse(match[0]);
+                if (repaired && typeof repaired === 'object') return extractArtifactList(repaired, keys);
+            } catch {}
+        }
+        return [{ title: "Generated Output (unformatted)", description: obj }];
+    }
+
+    if (Array.isArray(obj)) return obj;
+
+    const commonKeys = [...keys, 'test_cases', 'test_scenarios', 'scenarios', 'test_plan', 'cases', 'data', 'result', 'Generated Output'];
+    for (const k of commonKeys) {
+        if (Array.isArray(obj[k])) return obj[k];
+        if (obj[k] && typeof obj[k] === 'object') {
+            const nested = extractArtifactList(obj[k], keys);
+            if (nested && nested.length > 0) return nested;
+        }
+    }
+    for (const k in obj) {
+        if (Array.isArray(obj[k]) && obj[k].length > 0) return obj[k];
+    }
+    if (typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length > 0) return [obj];
+    return [];
+};
+
 const getInferenceConfig = () => {
-    try {
-        const saved = localStorage.getItem('tfx_settings');
-        if (!saved) return null;
-        const parsed = JSON.parse(saved);
-        return parsed.model; // contains provider, ollamaUrl, id, etc.
-    } catch { return null; }
+  try {
+    const saved = localStorage.getItem('tfx_settings');
+    const parsed = saved ? JSON.parse(saved) : {};
+    return parsed.model || { provider: "groq", id: "llama-3.3-70b-versatile", temperature: 0.3, maxTokens: 3000 };
+  } catch { return { provider: "groq", id: "llama-3.3-70b-versatile", temperature: 0.3, maxTokens: 3000 }; }
 };
 
-// Wrapper for simulated network requests with retries
-const fetchWithRetry = async (mockFn, retries = 2) => {
-  for (let i = 0; i < retries; i++) {
+const fetchWithRetry = async (fn, retries = 1, timeoutMs = 30000) => {
+  for (let i = 0; i <= retries; i++) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await mockFn();
+      const result = await fn(controller.signal);
+      clearTimeout(id);
+      return result;
     } catch (err) {
-      if (i === retries - 1) throw err;
-      await delay(1000); // Backoff
+      clearTimeout(id);
+      if (i === retries) throw err;
+      await new Promise(r => setTimeout(r, 1000));
     }
   }
 };
 
-// Base URL for production vs development
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
-
 export const api = {
-  // POST /api/jira/fetch
-  fetchJira: async (payload) => {
-    return fetchWithRetry(async () => {
-      await delay(1500);
-      if (!payload.url || !payload.email || !payload.token) {
-        throw new Error("Missing required Jira credentials configuration.");
-      }
-      
-      // Return strict JSON Mock (Phase 3 format)
-      return {
-        success: true,
-        data: [
-          {
-            id: `TFX-${Math.floor(Math.random() * 1000)}`,
-            title: "Implement SSO login via Google",
-            acceptanceCriteria: "1. SSO button visible. 2. Redirects to Google payload. 3. Authenticates successfully."
-          },
-          {
-            id: `TFX-${Math.floor(Math.random() * 1000)}`,
-            title: "Export Data to CSV",
-            acceptanceCriteria: "1. Export button on dashboard. 2. Downloads CSV of testcases."
-          }
-        ]
-      };
-    });
-  },
-
-  // POST /api/testcases/generate -> Call Real Llama3 Backend
-  generateTestCases: async (story) => {
-    return fetchWithRetry(async () => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 300000); // 300s timeout for LLM
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/testcases/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ story, settings: getInferenceConfig() }),
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        const json = await response.json();
-        
-        if (json.success && json.data) {
-          // Robustly find the test cases array within potentially nested structures
-          const findTestCases = (obj) => {
-            if (!obj) return null;
-            const parsed = typeof obj === 'string' ? safeParse(obj) : obj;
-            if (Array.isArray(parsed)) return parsed;
-            if (typeof parsed !== 'object') return null;
-
-            // Direct search for common keys
-            const keys = ['test_cases', 'test_case', 'cases', 'testcases', 'result', 'data'];
-            for (const k of keys) {
-              if (Array.isArray(parsed[k])) return parsed[k];
-            }
-
-            // Recursive search
-            for (const k of Object.keys(parsed)) {
-               if (typeof parsed[k] === 'object' && parsed[k] !== null) {
-                  const deep = findTestCases(parsed[k]);
-                  if (deep) return deep;
-               }
-            }
-            return null;
-          };
-
-          let testCasesArray = findTestCases(json.data);
-          
-          if (!testCasesArray) {
-              const rawData = typeof json.data === 'string' ? json.data : JSON.stringify(json.data);
-              if (rawData && rawData.length > 5) {
-                testCasesArray = [{ Description: rawData, Title: "Re-parsed from AI text (Fallback)" }];
-              } else {
-                testCasesArray = [];
-              }
-          }
-          return { success: true, data: testCasesArray };
-        } else {
-          throw new Error(json.error || 'Failed to generate test cases via AI');
-        }
-      } catch (err) {
-        console.error("LLM Generation API Error:", err);
-        throw err;
-      }
-    });
-  },
-
-  // Phase 21+22: Code Generation — real data injection + locator intelligence
-  generateCode: async (testCaseData) => {
-    return fetchWithRetry(async () => {
-      await delay(2500);
-
-      // Accept either a plain string (legacy) or a full object (Phase 21+)
-      const isLegacy = typeof testCaseData === 'string';
-      const title    = isLegacy ? testCaseData : (testCaseData.title || 'UnknownTest');
-      const url      = isLegacy ? 'https://example.com' : (testCaseData.url || testCaseData.test_plan?.url || 'https://your-app.com');
-      const steps    = isLegacy ? [] : (testCaseData.steps || []);
-      const elements = isLegacy ? [] : (testCaseData.elements || []);
-
-      // Phase 22: parseLocator helper — maps "type=value" → By.XXX("value")
-      const parseLocator = (locStr) => {
-        if (!locStr) return null;
-        const [type, ...rest] = locStr.split('=');
-        const val = rest.join('=');
-        switch (type.toLowerCase()) {
-          case 'id':    return `By.id("${val}")`;
-          case 'name':  return `By.name("${val}")`;
-          case 'css':   return `By.cssSelector("${val}")`;
-          case 'xpath': return `By.xpath("${val}")`;
-          default:      return `By.id("${val}")`;
-        }
-      };
-
-      // Build intelligent step→action lines (Phase 22: use real locators when available)
-      const buildActions = () => {
-        if (steps.length === 0 && elements.length === 0) {
-          return `        driver.findElement(By.id("submit-btn")).click();\n        Assert.assertTrue(driver.getCurrentUrl().contains("success"));`;
-        }
-
-        const lines = [];
-        const usedSteps = steps.length > 0 ? steps : ['Interact with UI', 'Verify outcome'];
-        usedSteps.forEach((step, idx) => {
-          const stepText = typeof step === 'string' ? step : (step.action || step.description || `Step ${idx + 1}`);
-          const stepLower = stepText.toLowerCase();
-
-          // Try to find a matching element from the URL Analyzer output
-          const matched = elements.find(el => {
-            const elName = (el.id || el.name || el.text || '').toLowerCase();
-            return elName && stepLower.includes(elName.replace(/-/g, ' ').replace(/_/g, ' '));
-          });
-
-          const locatorStr = matched ? (
-            matched.id    ? `By.id("${matched.id}")`
-          : matched.name  ? `By.name("${matched.name}")`
-          : `By.cssSelector("[data-testid='${matched.id || 'element'}']")`
-          ) : null;
-
-          if (stepLower.includes('open') || stepLower.includes('navigate') || stepLower.includes('go to')) {
-            lines.push(`        // ${stepText}`);
-            lines.push(`        driver.get("${url}");`);
-          } else if (stepLower.includes('click') || stepLower.includes('press') || stepLower.includes('submit')) {
-            const loc = locatorStr || (matched ? parseLocator(matched.locator) : `By.xpath("//${  stepLower.includes('button') ? 'button' : 'a'}[contains(text(),'${stepText.split(' ').pop()}')]")`);
-            lines.push(`        // ${stepText}`);
-            lines.push(`        driver.findElement(${loc}).click();`);
-          } else if (stepLower.includes('enter') || stepLower.includes('fill') || stepLower.includes('type') || stepLower.includes('input')) {
-            const loc = locatorStr || `By.name("input_${idx}")`;
-            const value = stepLower.includes('password') ? '"testPassword@123"' : '"test_input_value"';
-            lines.push(`        // ${stepText}`);
-            lines.push(`        driver.findElement(${loc}).sendKeys(${value});`);
-          } else if (stepLower.includes('verify') || stepLower.includes('assert') || stepLower.includes('check') || stepLower.includes('see')) {
-            lines.push(`        // ${stepText}`);
-            lines.push(`        Assert.assertTrue(driver.getCurrentUrl().contains("${url.split('/')[2] || 'app'}") || driver.getPageSource().contains("success"), "Assertion failed: ${stepText}");`);
-          } else {
-            const loc = locatorStr || `By.xpath("//*[contains(text(),'${stepText.split(' ').slice(-2).join(' ')}')]")`;
-            lines.push(`        // ${stepText}`);
-            lines.push(`        driver.findElement(${loc}).click();`);
-          }
-        });
-        return lines.join('\n');
-      };
-
-      const methodName = title.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '').replace(/^(\d)/, '_$1');
-      const className  = methodName.charAt(0).toUpperCase() + methodName.slice(1) + 'Test';
-
-      return {
-        success: true,
-        data: `// Auto-generated by TestForgeX CodeGen Studio (Phase 21+22)
-// Test Case: ${title}
-// Target URL: ${url}
-// Elements injected: ${elements.length}
-
-import io.github.bonigarcia.wdm.WebDriverManager;
-import org.openqa.selenium.By;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
-import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.support.ui.WebDriverWait;
-import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.testng.Assert;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.Test;
-import java.time.Duration;
-
-public class ${className} {
-
-    private WebDriver driver;
-    private WebDriverWait wait;
-
-    @BeforeMethod
-    public void setUp() {
-        WebDriverManager.chromedriver().setup();
-        driver = new ChromeDriver();
-        wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-        driver.manage().window().maximize();
-    }
-
-    @Test
-    public void ${methodName}() {
-        // Navigate to target URL
-        driver.get("${url}");
-
-${buildActions()}
-
-    }
-
-    @AfterMethod
-    public void tearDown() {
-        if (driver != null) {
-            driver.quit();
-        }
-    }
-}
-`
-      };
-    });
-  },
-
-  // Phase 9: URL Analyzer — Real AI Integration
-  analyzeURL: async (url) => {
-    return fetchWithRetry(async () => {
-      const response = await fetch(`${API_BASE_URL}/api/url/analyze`, {
+  extractArtifactList,
+  
+  // Jira fetch
+  fetchJira: async (issueId, creds) => {
+    return fetchWithRetry(async (signal) => {
+      const response = await fetch(`${API_BASE_URL}/api/jira/fetch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, settings: getInferenceConfig() })
+        body: JSON.stringify({ issueId, creds }),
+        signal
       });
       const json = await response.json();
       if (json.success) return { success: true, data: json.data };
-      throw new Error(json.error || 'Failed to analyze URL');
+      throw new Error(json.error || 'Failed to fetch Jira story');
     });
   },
 
-  // Phase 4: Test Plan
-  generateTestPlan: async (payload) => {
-    return fetchWithRetry(async () => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 300000); // 300s timeout
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/testplan/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            title: payload.title || payload.context || payload,
-            criteria: payload.criteria || "",
-            settings: getInferenceConfig()
-          }),
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        const json = await response.json();
-        if (json.success) return { success: true, data: json.data };
-        throw new Error(json.error || 'Failed to generate test plan');
-      } catch (err) {
-        clearTimeout(timeoutId);
-        throw err;
+  // Jira Generate Suite
+  generateJiraArtifacts: async (issueData) => {
+    return fetchWithRetry(async (signal) => {
+      const response = await fetch(`${API_BASE_URL}/api/jira/generate-artifacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issueData, settings: getInferenceConfig() }),
+        signal
+      });
+      const json = await response.json();
+      if (json.success) {
+          const raw = json.data;
+          let parsed = typeof raw === 'string' ? safeParse(raw) : raw;
+          if (typeof parsed === 'string') {
+              const testCasesMatch = parsed.match(/"test_cases"\s*:\s*(\[[\s\S]*?\])/) || parsed.match(/"test_cases"\s*:\s*(\[[\s\S]*)/);
+              const testPlanMatch = parsed.match(/"test_plan"\s*:\s*(\{[\s\S]*?\})/) || parsed.match(/"test_plan"\s*:\s*(\{[\s\S]*)/);
+              const scenariosMatch = parsed.match(/"test_scenarios"\s*:\s*(\[[\s\S]*?\])/) || parsed.match(/"test_scenarios"\s*:\s*(\[[\s\S]*)/);
+              const obj = {};
+              if (testCasesMatch) { const cleaned = safeParse(testCasesMatch[1]); if (cleaned && typeof cleaned === 'object') obj.test_cases = cleaned; }
+              if (testPlanMatch) { const cleaned = safeParse(testPlanMatch[1]); if (cleaned && typeof cleaned === 'object') obj.test_plan = cleaned; }
+              if (scenariosMatch) { const cleaned = safeParse(scenariosMatch[1]); if (cleaned && typeof cleaned === 'object') obj.test_scenarios = cleaned; }
+              if (Object.keys(obj).length > 0) parsed = obj;
+          }
+          return { success: true, data: parsed };
       }
-    });
+      throw new Error(json.error || 'Failed to generate artifacts');
+    }, 1, 60000);
   },
 
-  // Phase 14: User Stories — Real AI Integration
-  generateUserStories: async (sourceType, sourceData) => {
-    return fetchWithRetry(async () => {
+  // User Stories
+  generateUserStories: async (sourceType, input) => {
+    return fetchWithRetry(async (signal) => {
       const response = await fetch(`${API_BASE_URL}/api/userstory/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: sourceData, settings: getInferenceConfig() })
+        body: JSON.stringify({ input, sourceType, settings: getInferenceConfig() }),
+        signal
       });
       const json = await response.json();
-      if (json.success) return { success: true, data: json.data };
-      throw new Error(json.error || 'Failed to generate User Stories');
-    });
+      if (json.success) return json;
+      throw new Error(json.error || 'Failed to generate stories');
+    }, 1, 60000);
   },
 
-  // Phase 7: Coverage — Real AI Integration
-  analyzeCoverage: async (testCases) => {
-    return fetchWithRetry(async () => {
-      const response = await fetch(`${API_BASE_URL}/api/coverage/analyze`, {
+  // Test Plan
+  generateTestPlan: async (title, criteria = "") => {
+    return fetchWithRetry(async (signal) => {
+      const response = await fetch(`${API_BASE_URL}/api/testplan/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ testCases, settings: getInferenceConfig() })
+        body: JSON.stringify({ title, criteria, settings: getInferenceConfig() }),
+        signal
       });
       const json = await response.json();
-      if (json.success) return { success: true, data: json.data };
-      throw new Error(json.error || 'Failed to analyze coverage');
+      if (json.success) return json;
+      throw new Error(json.error || 'Failed to generate test plan');
     });
   },
 
-  // Phase 15: Settings Prompt Loader
-  fetchAvailablePrompts: async () => {
-    return fetchWithRetry(async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/ping-prompts`);
-        const json = await response.json();
-        return { success: true, data: json.loaded_prompts };
-      } catch (e) {
-        // Fallback array if backend isn't mapped
-        return { success: true, data: ['testplan/universal', 'testcase/universal', 'codegen/selenium-java', 'coverage/analysis', 'userstory/generator', 'url-analysis/universal'] };
-      }
-    });
-  },
-
-  // Test Scenario Generation
+  // Test Scenarios
   generateScenarios: async (story) => {
-    return fetchWithRetry(async () => {
+    return fetchWithRetry(async (signal) => {
       const response = await fetch(`${API_BASE_URL}/api/scenarios/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ story, settings: getInferenceConfig() })
+        body: JSON.stringify({ story, settings: getInferenceConfig() }),
+        signal
       });
       const json = await response.json();
-      if (json.success && json.data) {
-        // Advanced recursive search for any array of objects with 'title' or 'description'
-        const findScenarios = (obj) => {
-          if (!obj || typeof obj !== 'object') return null;
-          if (Array.isArray(obj)) return obj;
-          
-          // Check common keys directly first
-          const commonKeys = ['test_scenarios', 'Generated Output', 'generated_output', 'scenarios', 'cases'];
-          for (const k of commonKeys) {
-            if (obj[k] && Array.isArray(obj[k])) return obj[k];
-            // One level deeper for Generated Output: { "Generated Output": { "test_scenarios": [] } }
-            if (obj[k] && typeof obj[k] === 'object') {
-               const deep = findScenarios(obj[k]);
-               if (deep && Array.isArray(deep)) return deep;
-            }
-          }
-
-          // Fallback: search ALL keys for an array
-          for (const k of Object.keys(obj)) {
-            if (Array.isArray(obj[k]) && obj[k].length > 0) return obj[k];
-            if (typeof obj[k] === 'object') {
-              const deep = findScenarios(obj[k]);
-              if (deep && Array.isArray(deep)) return deep;
-            }
-          }
-          return null;
-        };
-
-        const list = findScenarios(json.data) || [];
-        return { success: true, data: list };
-      }
+      if (json.success) return { success: true, data: extractArtifactList(json.data, ['test_scenarios', 'scenarios']) };
       throw new Error(json.error || 'Failed to generate scenarios');
     });
   },
 
-  // API Test Scenarios — from user story
-  generateApiScenarios: async (story) => {
-    return fetchWithRetry(async () => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000);
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/api-scenarios/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ story, settings: getInferenceConfig() }),
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        const json = await response.json();
-        if (json.success && json.data) return { success: true, data: json.data };
-        throw new Error(json.error || 'Failed to generate API test scenarios');
-      } catch (err) {
-        clearTimeout(timeoutId);
-        throw err;
-      }
+  // Test Cases
+  generateTestCases: async (story) => {
+    return fetchWithRetry(async (signal) => {
+      const response = await fetch(`${API_BASE_URL}/api/testcases/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ story, settings: getInferenceConfig() }),
+        signal
+      });
+      const json = await response.json();
+      if (json.success) return { success: true, data: extractArtifactList(json.data, ['test_cases', 'cases']) };
+      throw new Error(json.error || 'Failed to generate test cases');
     });
   },
 
-  // API Test Cases — from API data / endpoint spec
-  generateApiTestCases: async (apiData) => {
-    return fetchWithRetry(async () => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000);
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/api-testcases/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiData, settings: getInferenceConfig() }),
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        const json = await response.json();
-        if (json.success && json.data) {
-          // LLM may return the JSON as a string — parse it
-          const parsed = safeParse(json.data);
-          return { success: true, data: parsed };
-        }
-        throw new Error(json.error || 'Failed to generate API test cases');
-      } catch (err) {
-        clearTimeout(timeoutId);
-        throw err;
-      }
+  // API Scenarios
+  generateApiScenarios: async (story) => {
+    return fetchWithRetry(async (signal) => {
+      const response = await fetch(`${API_BASE_URL}/api/api-scenarios/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ story, settings: getInferenceConfig() }),
+        signal
+      });
+      const json = await response.json();
+      // We return the raw data object to preserve api_testing_required and reason fields
+      if (json.success) return { success: true, data: json.data };
+      throw new Error(json.error || 'Failed to generate API scenarios');
     });
+  },
+
+  // API Test Cases
+  generateApiTestCases: async (apiData) => {
+    return fetchWithRetry(async (signal) => {
+      const response = await fetch(`${API_BASE_URL}/api/api-testcases/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiData, settings: getInferenceConfig() }),
+        signal
+      });
+      const json = await response.json();
+      if (json.success) return { success: true, data: extractArtifactList(json.data) };
+      throw new Error(json.error || 'Failed to generate API test cases');
+    });
+  },
+
+  // Code Gen
+  generateCode: async (testCaseTitle) => {
+    return fetchWithRetry(async (signal) => {
+      const response = await fetch(`${API_BASE_URL}/api/codegen/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ testCaseTitle, settings: getInferenceConfig() }),
+        signal
+      });
+      const json = await response.json();
+      if (json.success) return json;
+      throw new Error(json.error || 'Failed to generate code');
+    }, 1, 60000);
+  },
+
+  // Coverage Analysis
+  analyzeCoverage: async (testCases, story) => {
+    return fetchWithRetry(async (signal) => {
+      const response = await fetch(`${API_BASE_URL}/api/coverage/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ testCases, story, settings: getInferenceConfig() }),
+        signal
+      });
+      const json = await response.json();
+      if (json.success) return json;
+      throw new Error(json.error || 'Failed to analyze coverage');
+    });
+  },
+
+  // URL Analyze
+  analyzeURL: async (url) => {
+    return fetchWithRetry(async (signal) => {
+      const response = await fetch(`${API_BASE_URL}/api/url/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, settings: getInferenceConfig() }),
+        signal
+      });
+      const json = await response.json();
+      if (json.success) return json;
+      throw new Error(json.error || 'Failed to analyze URL');
+    }, 1, 60000);
   }
 };

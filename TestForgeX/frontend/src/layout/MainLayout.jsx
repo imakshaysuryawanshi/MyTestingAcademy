@@ -18,7 +18,7 @@ import {
   Sun,
   Moon
 } from "lucide-react";
-import { useAppStore } from "../store/AppContext";
+import { useAppStore } from "../store/useAppStore";
 
 export default function MainLayout() {
   const [collapsed, setCollapsed] = useState(false);
@@ -127,7 +127,7 @@ export default function MainLayout() {
         </div>
 
         {/* Content area: Rendered child routes will appear here */}
-        <div className="flex-1 overflow-auto bg-[#080B0F] p-8">
+        <div className="flex-1 overflow-auto bg-[#080B0F] p-5 md:p-6 lg:p-7">
           <Outlet />
         </div>
       </div>

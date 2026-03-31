@@ -1,11 +1,8 @@
 import React, { useState, useRef, useCallback } from "react";
-import {
-  FileText, Loader2, Play, UploadCloud, X,
-  AlertCircle, ChevronDown, ChevronUp, Clock, Trash2, Download, FlaskConical
-} from "lucide-react";
+import { FileText, Loader2, Play, UploadCloud, X, AlertCircle, ChevronDown, ChevronUp, Clock, Trash2, Download, FlaskConical, Database } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
-import { useAppStore } from "../store/AppContext";
+import { useAppStore } from "../store/useAppStore";
 
 // ── helper: detect if string looks like binary / PDF ─────────────────────────
 const isBinaryContent = (text) => {
@@ -73,7 +70,7 @@ function PlanHistoryCard({ plan, idx, onDelete }) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function TestPlan() {
-  const { showToast, setTestPlans, testPlans } = useAppStore();
+  const { showToast, testPlans, addTestPlans, addScenarios, addApiScenarios } = useAppStore();
   const [context, setContext] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingScenarios, setLoadingScenarios] = useState(false);
@@ -128,8 +125,7 @@ export default function TestPlan() {
       const res = await api.generateTestPlan(context);
       const plan = res.data;
       setResult(plan);
-      // Save to global context for History + Dashboard
-      setTestPlans(prev => [...prev, { ...plan, _createdAt: new Date().toISOString() }]);
+      addTestPlans([plan]);
       showToast("✓ Test Plan generated and saved!", "success");
       // Reset inputs for next run
       clearFile();
@@ -167,12 +163,30 @@ export default function TestPlan() {
       const pseudoStory = { title: result.objective, description: result.scope };
       const res = await api.generateScenarios(pseudoStory);
       if (res.success) {
-        localStorage.setItem("tfx_scenarios", JSON.stringify(res.data));
+        setScenarios(prev => [...res.data, ...prev]);
         showToast(`✓ ${res.data.length} Scenarios generated from Plan!`, "success");
         setTimeout(() => navigate("/scenarios"), 800);
       }
     } catch {
       showToast("Failed to generate Scenarios", "error");
+    } finally {
+      setLoadingScenarios(false);
+    }
+  };
+
+  const handleGenerateApiScenarios = async () => {
+    if (!result) return;
+    setLoadingScenarios(true);
+    try {
+      const pseudoStory = { title: result.objective, description: result.scope };
+      const res = await api.generateApiScenarios(pseudoStory);
+      if (res.success) {
+        setApiScenarios(prev => [...res.data, ...prev]);
+        showToast(`✓ ${res.data.length} API Scenarios generated!`, "success");
+        setTimeout(() => navigate("/api-scenarios"), 800);
+      }
+    } catch {
+      showToast("Failed to generate API Scenarios", "error");
     } finally {
       setLoadingScenarios(false);
     }
@@ -270,6 +284,14 @@ export default function TestPlan() {
               >
                 {loadingScenarios ? <Loader2 size={14} className="animate-spin" /> : <FlaskConical size={14} />}
                 Generate Scenarios
+              </button>
+              <button 
+                onClick={handleGenerateApiScenarios} 
+                disabled={loadingScenarios}
+                className="flex items-center gap-1.5 px-3 py-1 bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-white rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+              >
+                {loadingScenarios ? <Loader2 size={14} className="animate-spin" /> : <Database size={14} />}
+                Generate API Scenarios
               </button>
               <button onClick={handleExportPlan} className="flex items-center gap-1.5 px-3 py-1 bg-textMuted/10 text-white hover:bg-white/10 border border-border rounded-lg text-xs font-semibold transition-colors">
                 <Download size={14} /> Export .MD

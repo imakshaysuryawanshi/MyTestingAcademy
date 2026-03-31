@@ -47,27 +47,64 @@ class ScraperService {
    */
   async scrape(url) {
     let browser, page;
+    let normalizedUrl = url.trim();
+    if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+      normalizedUrl = `https://${normalizedUrl}`;
+    }
+
     try {
       browser = await this._init();
+      // Verifiy browser is still healthy
+      if (!browser.isConnected()) {
+        console.warn(`[Scraper] Browser disconnected. Re-initializing...`);
+        this.browser = null;
+        browser = await this._init();
+      }
+
       page = await browser.newPage();
       
-      console.log(`[Scraper] Navigating to: ${url}`);
-      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      const status = response ? response.status() : 0;
+      // Step 2: Anti-detection (Mimic real user)
+      const userAgents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+      ];
+      await page.setUserAgent(userAgents[Math.floor(Math.random() * userAgents.length)]);
+      await page.setViewport({ width: 1440, height: 900 });
+
+      console.log(`[Scraper] Navigating to: ${normalizedUrl}`);
       
-      // Wait a small extra bit for static content
-      await new Promise(r => setTimeout(r, 1000));
-      
+      // Step 3: Fast Navigation
+      const response = await page.goto(normalizedUrl, { 
+        waitUntil: 'domcontentloaded', 
+        timeout: 25000 
+      });
+
+      const status = response?.status() || 200;
       const title = await page.title();
       const html = await page.content();
-      const data = this.extractDetails(html);
       
-      return { url, title, status, ...data };
+      // Step 4: Intelligent Extraction
+      const data = this.extractDetails(html);
+      await page.close();
+
+      return {
+        url: normalizedUrl,
+        title,
+        status,
+        ...data
+      };
     } catch (err) {
-      console.warn(`[Scraper] Puppeteer failed for ${url}: ${err.message}. Returning minimal trace.`);
-      return { url, title: "Blocked / Unavailable", status: 503, elements: [], visible_text: "Navigation failed" };
+      console.error(`[Scraper] Puppeteer failed for ${normalizedUrl}: ${err.message}`);
+      return { 
+        url: normalizedUrl, 
+        title: "Blocked / Unavailable", 
+        status: 503, 
+        elements: [], 
+        visible_text: "Navigation failed — site may be protected or unreachable" 
+      };
     } finally {
-      if (page) await page.close();
+      if (page) await page.close().catch(() => {});
     }
   }
 
@@ -106,24 +143,17 @@ class ScraperService {
 
     // Forms
     $('form').each((i, el) => {
-        const inputs = [];
-        $(el).find('input').each((j, inp) => {
-            inputs.push({
-                type: 'input',
-                inputType: $(inp).attr('type'),
-                name: $(inp).attr('name') || $(inp).attr('id') || '',
-                placeholder: $(inp).attr('placeholder') || ''
-            });
-        });
-        elements.push({ type: 'form', action: $(el).attr('action'), inputs });
+        const id = $(el).attr('id') || '';
+        const name = $(el).attr('name') || '';
+        elements.push({ type: 'form', id, name });
     });
 
-    // Visible text for summary
-    const visibleText = $('body').text().replace(/\s+/g, ' ').trim();
+    // Step 4: Cap the elements to stay within LLM context tokens (Limit: 100 items)
+    const cappedElements = elements.slice(0, 100);
 
     return {
-      elements: elements.slice(0, 50), // Token control limit
-      visible_text: visibleText.substring(0, 4000) // Step 5: Optimization
+      elements: cappedElements,
+      visible_text: $('body').text().slice(0, 3000).replace(/\s+/g, ' ').trim()
     };
   }
 }

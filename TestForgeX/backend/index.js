@@ -1,6 +1,8 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { promptLoader } from './src/utils/promptLoader.js';
 import aiRouter from './routes/ai.routes.js';
 
