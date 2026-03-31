@@ -3,7 +3,9 @@
  * Centralizes all AI interactions with auto-retries, timeouts, and JSON structural repair.
  */
 
-const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+const API_BASE_URL = window.location.hostname === 'localhost'
+  ? 'http://localhost:5000'
+  : 'https://backend-three-hazel-12.vercel.app';
 
 // Aggressively extract and parse JSON from noisy AI text
 const safeParse = (data) => {
