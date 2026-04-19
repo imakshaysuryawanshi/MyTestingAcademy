@@ -1,0 +1,5 @@
+coverage: |
+  Ensure deep regression coverage.
+  Test edge cases and existing integrations that might be affected.
+depth: deep
+tone: strict

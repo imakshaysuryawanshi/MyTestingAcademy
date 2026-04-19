@@ -1,0 +1,4 @@
+coverage: |-
+  * Focus: Boundaries, nulls, invalid inputs, and rapid interactions.
+  * Rules: Test system limits; use -1, 0, max_int, empty strings, and special characters.
+  * Volume: 8-12 cases.

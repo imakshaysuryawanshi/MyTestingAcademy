@@ -1,0 +1,4 @@
+coverage: |-
+  * Focus: Auth, Data Privacy, Input Sanitization, and Session Management.
+  * Rules: Check for SQLi, XSS, CSRF, and IDOR vulnerabilities. Verify HTTPS only.
+  * Volume: 6-10 cases.

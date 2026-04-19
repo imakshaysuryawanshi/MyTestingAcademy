@@ -1,0 +1,4 @@
+coverage: |-
+  * Focus: Formatting, Regions, Languages, and Timezones.
+  * Rules: Check currency symbols, date/time formats, and text direction (RTL/LTR).
+  * Volume: 6-10 cases.

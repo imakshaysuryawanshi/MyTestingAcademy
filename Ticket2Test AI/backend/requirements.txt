@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+httpx
+pydantic>=2.0.0
+litellm
+instructor
+python-dotenv
+pyyaml

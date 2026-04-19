@@ -1,0 +1,6 @@
+{
+  "ollamaUrl": "http://localhost:11434",
+  "lmStudioUrl": "http://localhost:1234/v1",
+  "activeProvider": "ollama",
+  "ollamaModel": "llama3"
+}
