@@ -1,0 +1,4 @@
+coverage: |-
+  * Focus: Response times, Throughput, and Concurrency.
+  * Rules: Verify page load speed, search latency, and behavior under simultaneous logins.
+  * Volume: 5-8 cases.

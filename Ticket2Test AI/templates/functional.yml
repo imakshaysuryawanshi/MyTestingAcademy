@@ -1,0 +1,5 @@
+coverage: |
+  Ensure broad functional coverage.
+  Test positive scenarios, critical paths, and expected use cases.
+depth: normal
+tone: professional

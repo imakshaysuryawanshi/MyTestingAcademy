@@ -1,0 +1,5 @@
+coverage: |-
+  * Focus: Critical path & P0/P1 scenarios.
+  * Goal: Rapid verification of core functionality.
+  * Rules: Avoid edge cases; prioritize "Login", "Checkout", "Main Flow".
+  * Volume: 5-8 cases.

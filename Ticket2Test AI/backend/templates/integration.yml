@@ -1,0 +1,4 @@
+coverage: |-
+  * Focus: Data flow between modules, API/DB handshakes, and Upstream/Downstream impacts.
+  * Rules: Verify end-to-end data integrity across system boundaries.
+  * Volume: 6-10 cases.

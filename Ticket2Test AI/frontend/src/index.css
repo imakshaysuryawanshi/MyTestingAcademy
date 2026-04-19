@@ -1,0 +1,86 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-surface: 249 249 255;
+    --color-surface-bright: 255 255 255;
+    --color-surface-container-lowest: 255 255 255;
+    --color-surface-container-low: 244 246 252;
+    --color-surface-container: 232 237 255;
+    --color-surface-container-highest: 215 226 255;
+    
+    --color-on-surface: 4 27 60;
+    --color-on-surface-variant: 67 70 84;
+    
+    --color-primary: 0 61 155;
+    --color-primary-container: 0 82 204;
+    --color-on-primary: 255 255 255;
+    
+    --color-secondary: 74 92 146;
+    --color-secondary-container: 221 226 249;
+    --color-on-secondary-container: 21 27 44;
+    
+    --color-tertiary: 123 38 0;
+    
+    --color-error: 186 26 26;
+    --color-error-container: 255 218 214;
+    
+    --color-outline-variant: 195 198 214;
+  }
+
+  /* Basic Dark Mode Inversion Layer (to be refined later, basic setup for premium) */
+  .dark {
+    --color-surface-container-lowest: 11 17 32;     /* Slate-950 Sidebar */
+    --color-surface-container-low: 30 41 59;        /* Slate-800 Panels */
+    --color-surface: 15 23 42;                      /* Slate-900 Main body */
+    --color-surface-container: 30 41 59;            /* Inputs */
+    --color-surface-container-high: 51 65 85;       /* Slate-700 Active tab */
+    --color-surface-container-highest: 71 85 105;   /* Slate-600 borders/highlights */
+    --color-surface-bright: 30 41 59;
+    --color-primary: 96 165 250;                    /* Blue-400 */
+    --color-on-primary: 11 17 32;
+    --color-primary-container: 30 58 138;           /* Blue-900 */
+    --color-on-primary-container: 219 234 254;
+    --color-on-surface: 241 245 249;                /* Slate-100 Text */
+    --color-on-surface-variant: 148 163 184;        /* Slate-400 Subtext */
+    --color-outline-variant: 51 65 85;              /* Slate-700 Border */
+    --color-error: 248 113 113;
+    --color-error-container: 127 29 29;
+  }
+
+  body {
+    @apply bg-surface text-on_surface font-sans;
+    -webkit-font-smoothing: antialiased;
+  }
+  
+  /* The "No-Line" Rule enforcing global utility behaviors */
+  .ghost-border {
+    @apply border border-outline_variant border-opacity-20 hover:border-primary hover:border-opacity-20 transition-colors;
+  }
+  
+  /* Shimmer */
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  
+  .animate-shimmer {
+    background: linear-gradient(90deg, 
+      rgba(255,255,255,0) 0%, 
+      rgba(255,255,255,0.4) 50%, 
+      rgba(255,255,255,0) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2.5s infinite ease-in-out;
+  }
+  
+  .dark .animate-shimmer {
+    background: linear-gradient(90deg, 
+      rgba(0,0,0,0) 0%, 
+      rgba(255,255,255,0.1) 50%, 
+      rgba(0,0,0,0) 100%);
+  }
+}

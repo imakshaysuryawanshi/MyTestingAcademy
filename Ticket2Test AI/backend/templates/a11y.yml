@@ -1,0 +1,4 @@
+coverage: |-
+  * Focus: WCAG 2.1 compliance, Screen Readers, Keyboard navigation.
+  * Rules: Check alt-text, aria-labels, color contrast, and focus states.
+  * Volume: 8-10 cases.
