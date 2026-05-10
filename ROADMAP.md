@@ -7,8 +7,12 @@ This repository contains a collection of AI-driven testing tools, automation fra
 | **TestForgeX** | AI-driven Selenium Java generator from URLs. | 🟢 Active |
 | **JobPilot_JP** | AI Job Assistant & search automation. | 🟡 Maintenance |
 | **API Testing** | RICE_POT framework for robust REST API verification. | 🟢 Active |
-| **Project_01_VWO** | VWO platform automation suite. | 🏁 Completed |
+| **Project_01_VWO** | VWO platform automation suite (Legacy + Updated). | 🏁 Completed |
 | **AI Trial 1** | Early experiments in agentic coding patterns. | 🏁 Completed |
+| **VectorLens_RAG** | Premium RAG pipeline with Streamlit UI. | 🟢 Active |
+| **Ticket2Test AI** | AI-driven test case generation from JIRA tickets. | 🟢 Active |
+| **ASK GenBuddy** | LLM-powered test case generation assistant. | 🟢 Active |
+| **TestPlan_Gen** | Automated test plan generation using RICE_POT. | 🟢 Active |
 
 ## 🛠 Tech Stack
 - **Languages:** JavaScript, Java, TypeScript.
