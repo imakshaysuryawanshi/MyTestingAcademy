@@ -1,0 +1,29 @@
+# Python Environments
+venv/
+env/
+ENV/
+.env
+
+# Python Byte-compiled / Optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs directory
+# (Ignores all log files but keeps the directory itself via .gitkeep)
+logs/*
+!logs/.gitkeep
+
+# Screenshots directory
+# (Ignores all screenshot images but keeps the directory itself via .gitkeep)
+screenshots/*
+!screenshots/.gitkeep
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
