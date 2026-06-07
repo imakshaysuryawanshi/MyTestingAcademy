@@ -1,0 +1,13 @@
+{
+    "jira": {
+        "jira_url": "https://your-domain.atlassian.net/",
+        "email": "your-email@example.com",
+        "api_token": "your_jira_api_token_here"
+    },
+    "llm": {
+        "provider": "groq",
+        "model": "llama-3.3-70b-versatile",
+        "api_key": "your_groq_api_key_here",
+        "base_url": ""
+    }
+}

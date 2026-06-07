@@ -21,3 +21,6 @@ TestForgeX/
 node_modules/
 .env
 config.json
+mcp_config.json
+mcp-config.json
+dist/
